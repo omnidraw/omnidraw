@@ -7,9 +7,33 @@ export type TManagedCanvasRuntime = {
   shutdownEffect(): Effect.Effect<void, unknown>;
 };
 
+export type TCanvasRuntimeReadiness =
+  | 'starting'
+  | 'surface-ready'
+  | 'navigation-ready'
+  | 'scene-visible'
+  | 'document-ready'
+  | 'settled';
+
+const READINESS_ORDER: Readonly<Record<TCanvasRuntimeReadiness, number>> = {
+  'starting': 0,
+  'surface-ready': 1,
+  'navigation-ready': 2,
+  'scene-visible': 3,
+  'document-ready': 4,
+  'settled': 5,
+};
+
 export type TCanvasRuntimeLifecyclePortal<TSource> = {
-  createRuntime(source: TSource): TManagedCanvasRuntime;
+  createRuntime(
+    source: TSource,
+    reportReadiness: (readiness: TCanvasRuntimeReadiness) => void,
+  ): TManagedCanvasRuntime;
   onBootStart?(source: TSource): void;
+  onReadinessChange?(
+    readiness: TCanvasRuntimeReadiness,
+    source: TSource,
+  ): void;
   onBootSuccess?(source: TSource): void;
   onBootError?(error: unknown, source: TSource): void;
   onBootRecoveryWait?(error: unknown, source: TSource): void;
@@ -27,6 +51,7 @@ export class CanvasRuntimeLifecycle<TSource> {
   #disposed = false;
   #disposePromise: Promise<void> | null = null;
   #pendingBootRecovery: TCanvasWaitHandle | null = null;
+  #readiness: TCanvasRuntimeReadiness = 'starting';
   readonly #effects = new CanvasEffectRuntime();
 
   constructor(
@@ -82,12 +107,24 @@ export class CanvasRuntimeLifecycle<TSource> {
       let runtime: TManagedCanvasRuntime | null = null;
       const boot = Effect.gen(function*() {
         runtime = yield* Effect.try({
-          try: () => self.portal.createRuntime(source),
+          try: () => self.portal.createRuntime(
+            source,
+            (readiness) => self.#acceptReadiness(
+              readiness,
+              source,
+              generation,
+              runtime,
+            ),
+          ),
           catch: (cause) => cause,
         });
         self.#activeRuntime = runtime;
+        self.#readiness = 'starting';
         yield* Effect.try({
-          try: () => self.portal.onBootStart?.(source),
+          try: () => {
+            self.portal.onBootStart?.(source);
+            self.portal.onReadinessChange?.('starting', source);
+          },
           catch: (cause) => cause,
         });
         yield* runtime!.bootEffect();
@@ -153,6 +190,27 @@ export class CanvasRuntimeLifecycle<TSource> {
       }
       yield* self.#bootUntilSettledEffect(source, generation);
     }));
+  }
+
+  #acceptReadiness(
+    readiness: TCanvasRuntimeReadiness,
+    source: TSource,
+    generation: number,
+    runtime: TManagedCanvasRuntime | null,
+  ): void {
+    if (
+      this.#disposed
+      || generation !== this.#generation
+      || runtime === null
+      || this.#activeRuntime !== runtime
+      || READINESS_ORDER[readiness] <= READINESS_ORDER[this.#readiness]
+    ) return;
+    this.#readiness = readiness;
+    try {
+      this.portal.onReadinessChange?.(readiness, source);
+    } catch {
+      // Host presentation callbacks do not own runtime lifetime.
+    }
   }
 
   #shutdownActiveEffect(): Effect.Effect<void, never> {

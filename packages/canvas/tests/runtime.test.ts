@@ -36,6 +36,9 @@ const runtimeState = vi.hoisted(() => ({
   pathAppearances: [] as unknown[],
   selectedNode: null as unknown,
   selectedNodeIds: [] as string[],
+  authoredNodes: [] as unknown[],
+  acceptedItems: new Map<string, { item: unknown }>(),
+  authoredListeners: new Set<() => void>(),
   fontPreloads: [] as string[],
   fontRegistrations: [] as Array<{
     descriptor: Record<string, unknown>;
@@ -51,6 +54,8 @@ const runtimeState = vi.hoisted(() => ({
   projectionReplaceError: null as Error | null,
   documentStartHook: null as (() => void) | null,
   fontPreloadPromise: null as Promise<void> | null,
+  resourceListener: null as ((state: unknown) => void) | null,
+  invalidations: [] as string[],
   theme: null as unknown as TThemeDefinition,
   themeListener: null as ((theme: TThemeDefinition) => void) | null,
 }));
@@ -203,6 +208,13 @@ vi.mock('../src/services/CanvasDocumentService', () => ({
       runtimeState.documentStartHook?.();
     }
 
+    loadInitialSnapshotEffect() {
+      return Effect.sync(() => {
+        runtimeState.events.push('snapshot:dispatch');
+        return {} as never;
+      });
+    }
+
     async dispose(): Promise<void> {
       runtimeState.events.push('document:dispose');
     }
@@ -212,14 +224,23 @@ vi.mock('../src/services/CanvasDocumentService', () => ({
       return true;
     }
 
-    item(): null { return null; }
+    item(itemId: string): { item: unknown } | null {
+      return runtimeState.acceptedItems.get(itemId) ?? null;
+    }
     items(): readonly never[] { return []; }
     authoredNode(): null { return null; }
-    authoredNodes(): readonly never[] { return []; }
+    authoredNodes(): readonly never[] {
+      return runtimeState.authoredNodes as readonly never[];
+    }
     query(): Promise<{ items: never[]; nextCursor: null }> {
       return Promise.resolve({ items: [], nextCursor: null });
     }
-    subscribeAuthored(): () => void { return () => undefined; }
+    subscribeAuthored(listener: () => void): () => void {
+      runtimeState.authoredListeners.add(listener);
+      return () => {
+        runtimeState.authoredListeners.delete(listener);
+      };
+    }
 
   },
 }));
@@ -234,6 +255,7 @@ import {
 } from '../src/fn.cangine-theme-appearance';
 import {
   fnCanvasContractNodeToCangine,
+  fnCangineNodeToAuthoredCanvasContract,
 } from '../src/internal/cangine-contract-adapter';
 
 const themeService = {
@@ -260,6 +282,31 @@ const wait = Object.freeze({
   }),
 });
 
+function controlAnimationFrames(ownerWindow: Window): Readonly<{
+  flush(): void;
+  pending(): number;
+}> {
+  let nextHandle = 1;
+  const callbacks = new Map<number, FrameRequestCallback>();
+  vi.spyOn(ownerWindow, 'requestAnimationFrame').mockImplementation((callback) => {
+    const handle = nextHandle;
+    nextHandle += 1;
+    callbacks.set(handle, callback);
+    return handle;
+  });
+  vi.spyOn(ownerWindow, 'cancelAnimationFrame').mockImplementation((handle) => {
+    callbacks.delete(handle);
+  });
+  return Object.freeze({
+    flush() {
+      const pending = [...callbacks.values()];
+      callbacks.clear();
+      for (const callback of pending) callback(ownerWindow.performance.now());
+    },
+    pending: () => callbacks.size,
+  });
+}
+
 describe('canvas runtime composition', () => {
   beforeEach(() => {
     runtimeState.documentInstance = null;
@@ -280,6 +327,9 @@ describe('canvas runtime composition', () => {
     runtimeState.pathAppearances.length = 0;
     runtimeState.selectedNode = null;
     runtimeState.selectedNodeIds.length = 0;
+    runtimeState.authoredNodes.length = 0;
+    runtimeState.acceptedItems.clear();
+    runtimeState.authoredListeners.clear();
     runtimeState.fontPreloads.length = 0;
     runtimeState.fontRegistrations.length = 0;
     runtimeState.sessionConfig = null;
@@ -292,6 +342,8 @@ describe('canvas runtime composition', () => {
     runtimeState.projectionReplaceError = null;
     runtimeState.documentStartHook = null;
     runtimeState.fontPreloadPromise = null;
+    runtimeState.resourceListener = null;
+    runtimeState.invalidations.length = 0;
     runtimeState.theme = BUILTIN_THEMES[0]!;
     runtimeState.themeListener = null;
     runtimeState.engine = {
@@ -358,6 +410,26 @@ describe('canvas runtime composition', () => {
           runtimeState.events.push('fonts:preload');
           await runtimeState.fontPreloadPromise;
         },
+        subscribe(listener: (state: unknown) => void) {
+          runtimeState.resourceListener = listener;
+          return () => {
+            runtimeState.events.push('resources:release');
+            runtimeState.resourceListener = null;
+          };
+        },
+      },
+      invalidate(reason: string) {
+        runtimeState.invalidations.push(reason);
+      },
+      async renderNow() {
+        runtimeState.events.push('render:present');
+        return {
+          frameId: runtimeState.events.filter((event) => event === 'render:present').length,
+          startedAt: 0,
+          completedAt: 0,
+          missingResources: [],
+          skippedNodeIds: [],
+        };
       },
       input: {
         subscribe(listener: (event: unknown) => TMockInputDisposition | void) {
@@ -395,6 +467,7 @@ describe('canvas runtime composition', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     document.body.replaceChildren();
   });
@@ -453,6 +526,9 @@ describe('canvas runtime composition', () => {
     expect(runtimeState.engineConfig).toBeNull();
     expect(runtimeState.events).toEqual([]);
     await Effect.runPromise(boot);
+    await vi.waitFor(() => expect(runtimeState.events).toContain(
+      'extension:second:install',
+    ));
 
     const engineConfig = runtimeState.engineConfig as Record<string, unknown>;
     const sessionConfig = runtimeState.sessionConfig as {
@@ -574,9 +650,9 @@ describe('canvas runtime composition', () => {
         }))
       )),
     ]);
-    expect(runtimeState.fontPreloads).toHaveLength(12);
-    expect(runtimeState.events.indexOf('fonts:preload')).toBeLessThan(
-      runtimeState.events.indexOf('document:start'),
+    expect(runtimeState.fontPreloads).toEqual([]);
+    expect(runtimeState.events.indexOf('snapshot:dispatch')).toBeLessThan(
+      runtimeState.events.indexOf('engine:create'),
     );
     expect(runtime.selectionStyles()).toBe(runtimeState.styleController);
     expect(runtimeState.events.indexOf('selection-style:attach')).toBeGreaterThan(
@@ -608,8 +684,8 @@ describe('canvas runtime composition', () => {
       'selection-style:destroy',
       'editor:destroy',
       'projection:dispose',
-      'document:dispose',
       'engine:destroy',
+      'document:dispose',
     ]);
     expect(container.childNodes).toHaveLength(0);
     expect(runtime.selectionStyles()).toBeNull();
@@ -618,6 +694,136 @@ describe('canvas runtime composition', () => {
     runtimeState.theme = BUILTIN_THEMES[1]!;
     lateThemeChange?.(BUILTIN_THEMES[1]!);
     expect(runtimeState.projectionSnapshots).toHaveLength(4);
+  });
+
+  test('reports surface and scene readiness only after their frames present', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const runtime = buildRuntime({
+      canvasId: 'canvas-readiness',
+      container,
+      transport: {} as never,
+      createId: () => 'id-readiness',
+      wait,
+      themeService,
+      image: { uploadImage: vi.fn(), cloneImage: vi.fn(), deleteImage: vi.fn() },
+      notification: { showError: vi.fn(), showInfo: vi.fn(), showSuccess: vi.fn() },
+      reportReadiness: (readiness) => {
+        runtimeState.events.push(`readiness:${readiness}`);
+      },
+    });
+
+    await Effect.runPromise(runtime.bootEffect());
+
+    const firstPresentation = runtimeState.events.indexOf('render:present');
+    const secondPresentation = runtimeState.events.indexOf(
+      'render:present',
+      firstPresentation + 1,
+    );
+    expect(runtimeState.events.indexOf('projection:replace'))
+      .toBeLessThan(firstPresentation);
+    expect(firstPresentation).toBeLessThan(
+      runtimeState.events.indexOf('readiness:surface-ready'),
+    );
+    expect(runtimeState.events.indexOf('readiness:surface-ready')).toBeLessThan(
+      runtimeState.events.indexOf('readiness:navigation-ready'),
+    );
+    expect(runtimeState.events.indexOf('document:start'))
+      .toBeLessThan(secondPresentation);
+    expect(secondPresentation).toBeLessThan(
+      runtimeState.events.indexOf('readiness:scene-visible'),
+    );
+
+    await Effect.runPromise(runtime.shutdownEffect());
+  });
+
+  test('does not start optional hydration until a frame has painted', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const frames = controlAnimationFrames(window);
+    const install = vi.fn(() => ({}));
+    const runtime = buildRuntime({
+      canvasId: 'canvas-paint',
+      container,
+      transport: {} as never,
+      createId: () => 'id-paint',
+      wait,
+      themeService,
+      image: { uploadImage: vi.fn(), cloneImage: vi.fn(), deleteImage: vi.fn() },
+      notification: { showError: vi.fn(), showInfo: vi.fn(), showSuccess: vi.fn() },
+    }, [{ name: 'after-paint', install }]);
+
+    await Effect.runPromise(runtime.bootEffect());
+    expect(install).not.toHaveBeenCalled();
+
+    await vi.waitFor(() => expect(frames.pending()).toBeGreaterThan(0));
+    frames.flush();
+    await Promise.resolve();
+    expect(install).not.toHaveBeenCalled();
+
+    await vi.waitFor(() => expect(frames.pending()).toBeGreaterThan(0));
+    frames.flush();
+    await vi.waitFor(() => expect(install).toHaveBeenCalledOnce());
+
+    await Effect.runPromise(runtime.shutdownEffect());
+  });
+
+  test('does not load an optional extension for an optimistic-only frame', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const frames = controlAnimationFrames(window);
+    const chatNode = Object.freeze({
+      id: 'widget-chat',
+      parentId: null,
+      orderKey: 'A',
+      kind: 'widget-frame',
+      transform: {
+        position: { x: 0, y: 0 },
+        rotation: 0,
+        scale: { x: 1, y: 1 },
+        skew: { x: 0, y: 0 },
+        origin: { x: 0, y: 0 },
+      },
+      size: { width: 320, height: 240 },
+    });
+    const runtimeChatNode = fnCanvasContractNodeToCangine(chatNode as never);
+    const acceptedChatNode = fnCangineNodeToAuthoredCanvasContract(runtimeChatNode);
+    runtimeState.authoredNodes.push(runtimeChatNode);
+    const load = vi.fn(async () => ({
+      name: 'lazy-chat',
+      install: () => ({}),
+    }));
+    const runtime = buildRuntime({
+      canvasId: 'canvas-accepted-loader',
+      container,
+      transport: {} as never,
+      createId: () => 'id-loader',
+      wait,
+      themeService,
+      image: { uploadImage: vi.fn(), cloneImage: vi.fn(), deleteImage: vi.fn() },
+      notification: { showError: vi.fn(), showInfo: vi.fn(), showSuccess: vi.fn() },
+    }, [], [{
+      name: 'lazy-chat',
+      loadingLabel: 'Loading chat…',
+      failureLabel: 'Chat failed to load.',
+      match: (node) => node.kind === 'widget-frame',
+      load,
+    }]);
+
+    await Effect.runPromise(runtime.bootEffect());
+    await vi.waitFor(() => expect(frames.pending()).toBeGreaterThan(0));
+    frames.flush();
+    await Promise.resolve();
+    await vi.waitFor(() => expect(frames.pending()).toBeGreaterThan(0));
+    frames.flush();
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    expect(load).not.toHaveBeenCalled();
+
+    runtimeState.acceptedItems.set(chatNode.id, { item: acceptedChatNode });
+    for (const listener of runtimeState.authoredListeners) listener();
+    await vi.waitFor(() => expect(load).toHaveBeenCalledOnce());
+
+    await Effect.runPromise(runtime.shutdownEffect());
   });
 
   test('projects one exclusive widget shell and centrally mounts only owned overlays', async () => {
@@ -652,6 +858,7 @@ describe('canvas runtime composition', () => {
       },
     }]);
     await Effect.runPromise(runtime.bootEffect());
+    await vi.waitFor(() => expect(canvasOverlayStates.length).toBeGreaterThan(0));
 
     const widgets = runtimeState.widgetController as {
       state: {
@@ -1039,6 +1246,7 @@ describe('canvas runtime composition', () => {
     }, [{
       name: 'throwing',
       install() {
+        runtimeState.events.push('extension:throwing:install');
         return {
           dispose() {
             runtimeState.events.push('extension:throwing:dispose');
@@ -1048,6 +1256,9 @@ describe('canvas runtime composition', () => {
       },
     }]);
     await Effect.runPromise(runtime.bootEffect());
+    await vi.waitFor(() => expect(runtimeState.events).toContain(
+      'extension:throwing:install',
+    ));
 
     await expect(Effect.runPromise(runtime.shutdownEffect())).rejects.toThrow(
       'extension teardown failed',
@@ -1062,7 +1273,7 @@ describe('canvas runtime composition', () => {
     expect(container.childNodes).toHaveLength(0);
   });
 
-  test('closes partial acquisition when a later extension install fails', async () => {
+  test('isolates an extension install failure from the interactive runtime', async () => {
     const container = document.createElement('div');
     document.body.append(container);
     const runtime = buildRuntime({
@@ -1077,9 +1288,12 @@ describe('canvas runtime composition', () => {
     }, [
       {
         name: 'acquired',
-        install: () => ({
-          dispose: () => { runtimeState.events.push('extension:acquired:dispose'); },
-        }),
+        install: () => {
+          runtimeState.events.push('extension:acquired:install');
+          return {
+            dispose: () => { runtimeState.events.push('extension:acquired:dispose'); },
+          };
+        },
       },
       {
         name: 'failed',
@@ -1087,9 +1301,15 @@ describe('canvas runtime composition', () => {
       },
     ]);
 
-    await expect(Effect.runPromise(runtime.bootEffect())).rejects.toThrow(
-      'extension install failed',
-    );
+    await Effect.runPromise(runtime.bootEffect());
+    await vi.waitFor(() => expect(runtimeState.events).toContain(
+      'extension:acquired:install',
+    ));
+    expect(runtime.engine()).toBe(runtimeState.engine);
+    expect(runtimeState.events).not.toContain('engine:destroy');
+
+    await Effect.runPromise(runtime.shutdownEffect());
+    await Effect.runPromise(runtime.shutdownEffect());
     expect(runtimeState.events).toEqual(expect.arrayContaining([
       'extension:acquired:dispose',
       'image-drop:destroy',
@@ -1098,19 +1318,26 @@ describe('canvas runtime composition', () => {
       'document:dispose',
       'engine:destroy',
     ]));
-    const teardownCount = runtimeState.events.filter((event) => (
-      event.includes(':dispose') || event.includes(':destroy')
-    )).length;
-    await Effect.runPromise(runtime.shutdownEffect());
-    await Effect.runPromise(runtime.shutdownEffect());
-    expect(runtimeState.events.filter((event) => (
-      event.includes(':dispose') || event.includes(':destroy')
-    ))).toHaveLength(teardownCount);
   });
 
-  test('interruption closes resources acquired before font preload settles', async () => {
+  test('an unresolved referenced font never blocks document readiness', async () => {
     const container = document.createElement('div');
     document.body.append(container);
+    runtimeState.authoredNodes.push({
+      id: 'text-a',
+      parentId: null,
+      orderKey: 'A',
+      kind: 'text',
+      transform: { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 },
+      runs: [{ text: 'Hello' }],
+      style: {
+        fontFamilies: ['Fraunces', 'serif'],
+        fontSize: 16,
+        fontWeight: 600,
+        fill: { type: 'solid', color: '#000000' },
+      },
+      layout: { type: 'auto-width' },
+    });
     runtimeState.fontPreloadPromise = new Promise(() => undefined);
     const runtime = buildRuntime({
       canvasId: 'canvas-a',
@@ -1122,18 +1349,26 @@ describe('canvas runtime composition', () => {
       image: { uploadImage: vi.fn(), cloneImage: vi.fn(), deleteImage: vi.fn() },
       notification: { showError: vi.fn(), showInfo: vi.fn(), showSuccess: vi.fn() },
     });
-    const controller = new AbortController();
-    const boot = Effect.runPromiseExit(runtime.bootEffect(), {
-      signal: controller.signal,
-    });
+    await Effect.runPromise(runtime.bootEffect());
     await vi.waitFor(() => expect(runtimeState.events).toContain('fonts:preload'));
 
-    controller.abort();
-    const exit = await boot;
+    expect(runtimeState.fontPreloads).toEqual(['omnidraw-font:fraunces:600']);
+    expect(runtimeState.events.indexOf('document:start')).toBeLessThan(
+      runtimeState.events.indexOf('fonts:preload'),
+    );
+    expect(runtimeState.events.indexOf('editor:attach')).toBeLessThan(
+      runtimeState.events.indexOf('fonts:preload'),
+    );
+    runtimeState.resourceListener?.({
+      status: 'ready',
+      descriptor: { id: 'omnidraw-font:fraunces:600' },
+    });
+    expect(runtimeState.invalidations).toEqual(['omnidraw:font-ready']);
 
-    expect(exit._tag).toBe('Failure');
+    await Effect.runPromise(runtime.shutdownEffect());
     expect(runtimeState.events).toEqual(expect.arrayContaining([
       'theme:release',
+      'resources:release',
       'projection:dispose',
       'document:dispose',
       'engine:destroy',

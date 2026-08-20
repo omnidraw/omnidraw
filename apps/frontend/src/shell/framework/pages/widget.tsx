@@ -1,7 +1,7 @@
 import { useLocation, useNavigate, useParams, useSearchParams } from '@solidjs/router';
 import { type Component } from 'solid-js';
 import { WidgetDetailPage } from '@/shell/framework/feature/sidebar';
-import { createFrontendSidebarController } from '@/shell/chat/adapters';
+import { createFrontendSidebarController } from '@/shell/framework/feature/sidebar/sidebar-controller';
 import { useFrontendRuntime } from '../runtime-context';
 
 const WidgetPage: Component = () => {

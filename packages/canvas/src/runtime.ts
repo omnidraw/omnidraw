@@ -14,11 +14,15 @@ import {
   type IStandardEditorSession,
   type TPathSegmentMode,
 } from '@omnidraw/cangine/editor';
-import type { TCanvasDocumentTransport } from '@omnidraw/canvas-contract';
+import {
+  fnStringifyCanonicalCanvasJson,
+  type TCanvasDocumentTransport,
+} from '@omnidraw/canvas-contract';
 import type { IThemeService } from '@omnidraw/theme';
-import { Effect, Exit, type Scope } from 'effect';
+import { Effect, Exit, Fiber, Queue, type Scope } from 'effect';
 import type {
   ICanvasExtension,
+  TCanvasExtensionLoader,
   TCanvasOverlayContribution,
 } from './extension';
 import { CanvasDocumentService } from './services/CanvasDocumentService';
@@ -66,6 +70,7 @@ import {
 } from './fn.canvas-shell';
 import {
   CANVAS_RUNTIME_CONTENT_LAYER_ID,
+  fnCangineNodeToAuthoredCanvasContract,
   fnCanvasContractNodeToCangine,
 } from './internal/cangine-contract-adapter';
 import { CanvasExtensionBridge } from './internal/CanvasExtensionBridge';
@@ -92,6 +97,7 @@ type TCanvasRuntimeConfig = Readonly<{
   image: TCanvasImagePort;
   notification: TCanvasNotificationPort;
   trace?: TReproductionTraceOwner | null;
+  reportReadiness?(readiness: import('./components/CanvasRuntimeLifecycle').TCanvasRuntimeReadiness): void;
 }>;
 
 const FONT_WEIGHTS = [400, 500, 600, 700] as const;
@@ -149,6 +155,80 @@ const FONT_RESOURCES = FONT_FAMILIES.flatMap(([
     source: { type: 'url' as const, url: urls[index]! },
   }))
 ));
+
+function referencedFontResourceIds(
+  nodes: readonly Readonly<TSceneNode>[],
+): readonly string[] {
+  const referenced = new Set<string>();
+  const available = new Map(FONT_RESOURCES.map((font) => [
+    `${font.descriptor.family}\u0000${font.descriptor.weight}`,
+    font.descriptor.id,
+  ]));
+  const addStyle = (style: Readonly<{
+    fontFamilies?: readonly string[];
+    fontWeight?: number;
+  }>, fallbackWeight = 400): void => {
+    const weight = style.fontWeight ?? fallbackWeight;
+    for (const family of style.fontFamilies ?? []) {
+      const id = available.get(`${family}\u0000${weight}`);
+      if (id !== undefined) referenced.add(id);
+    }
+  };
+  for (const node of nodes) {
+    if (node.kind !== 'text') continue;
+    addStyle(node.style);
+    for (const run of node.runs) {
+      addStyle({
+        fontFamilies: run.style?.fontFamilies ?? node.style.fontFamilies,
+        fontWeight: run.style?.fontWeight,
+      }, node.style.fontWeight ?? 400);
+    }
+  }
+  return FONT_RESOURCES
+    .map((font) => font.descriptor.id)
+    .filter((id) => referenced.has(id));
+}
+
+function afterInteractivePaintEffect(
+  ownerWindow: Window,
+): Effect.Effect<void, unknown> {
+  return Effect.tryPromise({
+    try: (signal) => new Promise<void>((resolve) => {
+      let firstFrame = 0;
+      let secondFrame = 0;
+      let settled = false;
+      const finish = (): void => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener('abort', cancel);
+        resolve();
+      };
+      const cancel = (): void => {
+        ownerWindow.cancelAnimationFrame(firstFrame);
+        ownerWindow.cancelAnimationFrame(secondFrame);
+        finish();
+      };
+      signal.addEventListener('abort', cancel, { once: true });
+      firstFrame = ownerWindow.requestAnimationFrame(() => {
+        if (signal.aborted) return;
+        secondFrame = ownerWindow.requestAnimationFrame(finish);
+      });
+    }),
+    catch: (cause) => cause,
+  });
+}
+
+function presentCanvasEffect(
+  engine: IInfiniteCanvasEngine,
+): Effect.Effect<void, unknown> {
+  return Effect.tryPromise({
+    try: () => engine.renderNow({
+      includePortals: false,
+      awaitResources: false,
+    }),
+    catch: (cause) => cause,
+  }).pipe(Effect.asVoid);
+}
 
 export type TCanvasRuntime = Readonly<{
   /** Lazy package-internal programs executed by CanvasRuntimeLifecycle. */
@@ -535,9 +615,64 @@ function acquireEarlyEngineTraceSubscriptions(
   });
 }
 
+function createExtensionLoadingSurface(
+  loader: TCanvasExtensionLoader,
+  bridge: CanvasExtensionBridge,
+): Readonly<{
+  fail(error: unknown): void;
+  dispose(): void;
+}> {
+  const mounts = new Set<HTMLElement>();
+  let failure: string | null = null;
+  const render = (container: HTMLElement): void => {
+    const surface = container.ownerDocument.createElement('div');
+    surface.dataset.omnidrawExtensionStatus = loader.name;
+    surface.setAttribute('role', failure === null ? 'status' : 'alert');
+    surface.setAttribute('aria-live', 'polite');
+    surface.textContent = failure ?? loader.loadingLabel;
+    Object.assign(surface.style, {
+      alignItems: 'center',
+      boxSizing: 'border-box',
+      color: 'inherit',
+      display: 'flex',
+      font: '500 12px/18px system-ui, sans-serif',
+      height: '100%',
+      justifyContent: 'center',
+      padding: '16px',
+      textAlign: 'center',
+      width: '100%',
+    });
+    container.replaceChildren(surface);
+  };
+  const unregister = bridge.context.widgets.register({
+    id: `omnidraw.loader:${loader.name}`,
+    match: (node) => loader.match(node),
+    mount({ container }) {
+      mounts.add(container);
+      render(container);
+      return () => { mounts.delete(container); };
+    },
+  });
+  let active = true;
+  return Object.freeze({
+    fail() {
+      if (!active) return;
+      failure = loader.failureLabel;
+      for (const container of mounts) render(container);
+    },
+    dispose() {
+      if (!active) return;
+      active = false;
+      unregister();
+      mounts.clear();
+    },
+  });
+}
+
 export function buildRuntime(
   config: TCanvasRuntimeConfig,
   extensions: readonly ICanvasExtension[] = [],
+  extensionLoaders: readonly TCanvasExtensionLoader[] = [],
 ): TCanvasRuntime {
   const lifetime = new CanvasInstanceScope();
   let engine: IInfiniteCanvasEngine | null = null;
@@ -554,9 +689,12 @@ export function buildRuntime(
     widgetId: null,
   });
   let lastMaximizedWidgetId: string | null = null;
-  let lastWidgetCreationExtension: ICanvasExtension | null = null;
+  let lastWidgetCreationExtension: Readonly<{
+    oneShotWidgetCreation?: boolean;
+  }> | null = null;
   let normalizingWidgetShell = false;
   let selectionOverlaySuppressed = false;
+  const creationExtensions = [...extensions, ...extensionLoaders];
   const shellSelectionOverlayOwner = Object.freeze({});
   const shellListeners = new Set<(state: TCanvasShellState) => void>();
   const shellOverlays = new Set<TCanvasOverlayContribution>();
@@ -625,13 +763,6 @@ export function buildRuntime(
       const boot = Effect.gen(function*() {
       if (engine) throw new Error('Canvas runtime is already running.');
       yield* lifetime.addFinalizer(() => config.container.replaceChildren());
-      engine = yield* lifetime.acquirePromise(
-        () => createCanvasEngine(config.container),
-        async (canvasEngine) => {
-          if (engine === canvasEngine) engine = null;
-          await canvasEngine.destroy();
-        },
-      );
       documentService = yield* lifetime.acquireSync(
         () => new CanvasDocumentService({
           canvasId: config.canvasId,
@@ -685,6 +816,19 @@ export function buildRuntime(
           await document.dispose();
         },
       );
+      const initialSnapshotFiber = yield* documentService
+        .loadInitialSnapshotEffect()
+        .pipe(Effect.forkChild);
+      // Let the transport dispatch before engine acquisition can monopolize a
+      // frame; the request continues concurrently while Cangine initializes.
+      yield* Effect.yieldNow;
+      engine = yield* lifetime.acquirePromise(
+        () => createCanvasEngine(config.container),
+        async (canvasEngine) => {
+          if (engine === canvasEngine) engine = null;
+          await canvasEngine.destroy();
+        },
+      );
       canvasBackgroundProjection = yield* lifetime.acquireSync(
         () => createCanvasBackgroundOwner(engine!),
         (projection) => {
@@ -694,7 +838,17 @@ export function buildRuntime(
           projection.dispose();
         },
       );
+      if (config.trace !== undefined && config.trace !== null) {
+        yield* acquireEarlyEngineTraceSubscriptions(
+          lifetime,
+          config.trace,
+          engine,
+        );
+      }
       syncCanvasBackgroundProjection(gridVisible);
+      yield* presentCanvasEffect(engine);
+      config.reportReadiness?.('surface-ready');
+      config.reportReadiness?.('navigation-ready');
       yield* lifetime.acquireSync(
         () => config.themeService.subscribeThemeChange((theme) => {
           syncCanvasBackgroundProjection(gridVisible);
@@ -711,26 +865,16 @@ export function buildRuntime(
         }),
         (release) => release(),
       );
-      if (config.trace !== undefined && config.trace !== null) {
-        yield* acquireEarlyEngineTraceSubscriptions(
-          lifetime,
-          config.trace,
-          engine,
-        );
-      }
       for (const font of FONT_RESOURCES) {
         engine.resources.register(font.descriptor, font.source);
       }
+      const initialSnapshot = yield* Fiber.join(initialSnapshotFiber);
       yield* Effect.tryPromise({
-        try: () => engine!.resources.preload(
-          FONT_RESOURCES.map((font) => font.descriptor.id),
-        ),
+        try: () => documentService!.start(engine!, initialSnapshot),
         catch: (cause) => cause,
       });
-      yield* Effect.tryPromise({
-        try: () => documentService!.start(engine!),
-        catch: (cause) => cause,
-      });
+      yield* presentCanvasEffect(engine);
+      config.reportReadiness?.('scene-visible');
       const canvasEngine = engine;
       const document = documentService;
       if (canvasEngine === null || document === null) {
@@ -765,13 +909,13 @@ export function buildRuntime(
                   : { ink: style.strokeColor }),
               });
             },
-            ...(extensions.some(
+            ...(creationExtensions.some(
               (extension) => extension.createWidgetNodes !== undefined,
             )
               ? {
                   factories: {
                     widget: (creation) => {
-                      for (const extension of extensions) {
+                      for (const extension of creationExtensions) {
                         const nodes = extension.createWidgetNodes?.({
                           kind: 'widget',
                           nodeId: creation.nodeId,
@@ -1104,14 +1248,6 @@ export function buildRuntime(
         if (extensionBridge === bridge) extensionBridge = null;
         await bridge.dispose();
       });
-      yield* Effect.forEach(
-        extensions,
-        (extension) => lifetime.acquirePromise(
-          () => Promise.resolve(extension.install(extensionBridge!.context)),
-          (install) => Promise.resolve(install.dispose?.()),
-        ),
-        { discard: true },
-      );
       // Subscribes before `attach()` so this listener runs first in
       // registration order and can short-circuit the editor/standard-tools
       // path (which only subscribes once the session attaches below).
@@ -1153,6 +1289,147 @@ export function buildRuntime(
         );
       }
       selectionStyleController.attach();
+      config.reportReadiness?.('document-ready');
+
+      const hydrationWindow = ownerWindow;
+      const reportOptionalFailure = (
+        scope: string,
+        error: unknown,
+      ): void => {
+        reportTraceCallbackError(config.trace, scope, error);
+        config.notification.showError(
+          'Canvas content failed to load',
+          error instanceof Error ? error.message : String(error),
+        );
+      };
+      const installExtensionEffect = (
+        extension: ICanvasExtension,
+      ): Effect.Effect<void, unknown> => lifetime.acquirePromise(
+        () => Promise.resolve(extension.install(extensionBridge!.context)),
+        (install) => Promise.resolve(install.dispose?.()),
+      ).pipe(Effect.asVoid);
+      const optionalStaticPrograms = extensions.map((extension) => (
+        installExtensionEffect(extension).pipe(
+          Effect.catch((error) => Effect.sync(() => {
+            reportOptionalFailure(`extension:${extension.name}`, error);
+          })),
+        )
+      ));
+      const startedLoaders = new Set<string>();
+      const loaderEligible = (loader: TCanvasExtensionLoader): boolean => {
+        for (const node of document.authoredNodes()) {
+          try {
+            const authored = fnCangineNodeToAuthoredCanvasContract(node);
+            const accepted = document.item(authored.id)?.item;
+            if (
+              accepted !== undefined
+              && fnStringifyCanonicalCanvasJson(accepted)
+                === fnStringifyCanonicalCanvasJson(authored)
+              && loader.match(authored)
+            ) {
+              return true;
+            }
+          } catch (error) {
+            reportOptionalFailure(`extension-match:${loader.name}`, error);
+            return false;
+          }
+        }
+        return false;
+      };
+      const loadExtensionEffect = (
+        loader: TCanvasExtensionLoader,
+      ): Effect.Effect<void> => {
+        let status: ReturnType<typeof createExtensionLoadingSurface> | null = null;
+        return Effect.gen(function*() {
+          status = yield* lifetime.acquireSync(
+            () => createExtensionLoadingSurface(loader, extensionBridge!),
+            (surface) => surface.dispose(),
+          );
+          const loaded = yield* Effect.tryPromise({
+            try: (signal) => loader.load(signal),
+            catch: (cause) => cause,
+          });
+          if (loaded.name !== loader.name) {
+            return yield* Effect.fail(new Error(
+              `Extension loader '${loader.name}' returned '${loaded.name}'.`,
+            ));
+          }
+          yield* installExtensionEffect(loaded);
+          status.dispose();
+        }).pipe(
+          Effect.catch((error) => Effect.sync(() => {
+            reportOptionalFailure(`extension-loader:${loader.name}`, error);
+            status?.fail(error);
+          })),
+        );
+      };
+      const initialLoaderPrograms = extensionLoaders
+        .filter(loaderEligible)
+        .map((loader) => {
+          startedLoaders.add(loader.name);
+          return loadExtensionEffect(loader);
+        });
+      const fontIds = referencedFontResourceIds(document.authoredNodes());
+      const fontHydration = fontIds.length === 0
+        ? Effect.void
+        : Effect.gen(function*() {
+            const watched = new Set(fontIds);
+            yield* lifetime.acquireSync(
+              () => canvasEngine.resources.subscribe((state) => {
+                if (
+                  state.status === 'ready'
+                  && watched.has(state.descriptor.id)
+                ) canvasEngine.invalidate('omnidraw:font-ready');
+              }),
+              (release) => release(),
+            );
+            yield* Effect.tryPromise({
+              try: (signal) => canvasEngine.resources.preload(
+                [...fontIds],
+                { signal },
+              ),
+              catch: (cause) => cause,
+            }).pipe(
+              Effect.catch((error) => Effect.sync(() => {
+                reportOptionalFailure('font-hydration', error);
+              })),
+            );
+          });
+      const initialOptionalHydration = afterInteractivePaintEffect(hydrationWindow).pipe(
+        Effect.andThen(Effect.all(
+          [fontHydration, ...optionalStaticPrograms, ...initialLoaderPrograms],
+          { concurrency: 'unbounded', discard: true },
+        )),
+        Effect.andThen(Effect.sync(() => config.reportReadiness?.('settled'))),
+      );
+      yield* lifetime.fork(initialOptionalHydration);
+
+      if (extensionLoaders.length > 0) {
+        const hydrationSignals = yield* Queue.unbounded<void>();
+        const scanForNewExtensions = Effect.gen(function*() {
+          for (const loader of extensionLoaders) {
+            if (startedLoaders.has(loader.name) || !loaderEligible(loader)) continue;
+            startedLoaders.add(loader.name);
+            yield* lifetime.fork(loadExtensionEffect(loader));
+          }
+        });
+        yield* lifetime.acquireSync(
+          () => document.subscribeAuthored(() => {
+            Queue.offerUnsafe(hydrationSignals, undefined);
+          }),
+          (release) => release(),
+        );
+        yield* lifetime.fork(
+          afterInteractivePaintEffect(hydrationWindow).pipe(
+            Effect.andThen(Effect.forever(
+              Queue.take(hydrationSignals).pipe(
+                Effect.andThen(scanForNewExtensions),
+              ),
+            )),
+          ),
+        );
+        Queue.offerUnsafe(hydrationSignals, undefined);
+      }
       });
       return boot.pipe(
         Effect.onExit((exit) => Exit.isFailure(exit)

@@ -49,7 +49,9 @@ const runtimeMocks = vi.hoisted(() => ({
 
 vi.mock('../../src/runtime', async () => {
   const { Effect } = await import('effect');
-  return { buildRuntime: vi.fn(() => {
+  return { buildRuntime: vi.fn((config: {
+    reportReadiness?(readiness: string): void;
+  }) => {
     const unsubscribe = vi.fn();
     const controller = {
       state: controllerState('background'),
@@ -82,7 +84,12 @@ vi.mock('../../src/runtime', async () => {
       subscribe: vi.fn(() => () => undefined),
     };
     const runtime = {
-      bootEffect: vi.fn(() => Effect.void),
+      bootEffect: vi.fn(() => Effect.sync(() => {
+        config.reportReadiness?.('surface-ready');
+        config.reportReadiness?.('navigation-ready');
+        config.reportReadiness?.('scene-visible');
+        config.reportReadiness?.('document-ready');
+      })),
       document: vi.fn(() => null),
       editor: vi.fn(() => editor),
       engine: vi.fn(() => null),

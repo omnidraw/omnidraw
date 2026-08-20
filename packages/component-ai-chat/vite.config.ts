@@ -17,6 +17,7 @@ export default defineConfig(({ mode }) => ({
       preserveEntrySignatures: "strict",
       input: {
         index: resolve(__dirname, "src/index.ts"),
+        "canvas-frame": resolve(__dirname, "src/canvas-frame.ts"),
         styles: resolve(__dirname, "src/styles.css"),
       },
       external: (id) => externalPackage.test(id),

@@ -39,6 +39,38 @@ function recoveryWait() {
 }
 
 describe("CanvasRuntimeLifecycle", () => {
+  test("accepts readiness monotonically only from the current runtime", async () => {
+    const reports = new Map<string, (readiness: "surface-ready" | "navigation-ready" | "scene-visible" | "document-ready" | "settled") => void>();
+    const observed: string[] = [];
+    const lifecycle = new CanvasRuntimeLifecycle<string>({
+      createRuntime: (source, reportReadiness) => {
+        reports.set(source, reportReadiness);
+        return runtime(source);
+      },
+      onReadinessChange: (readiness, source) => {
+        observed.push(`${source}:${readiness}`);
+      },
+    });
+
+    await lifecycle.replace("first");
+    reports.get("first")?.("surface-ready");
+    reports.get("first")?.("document-ready");
+    reports.get("first")?.("scene-visible");
+    reports.get("first")?.("settled");
+    await lifecycle.replace("second");
+    reports.get("first")?.("settled");
+    reports.get("second")?.("navigation-ready");
+
+    expect(observed).toEqual([
+      "first:starting",
+      "first:surface-ready",
+      "first:document-ready",
+      "first:settled",
+      "second:starting",
+      "second:navigation-ready",
+    ]);
+  });
+
   test("shuts down the previous runtime before starting its replacement", async () => {
     const events: string[] = [];
     const runtimes = new Map<string, TManagedCanvasRuntime>();

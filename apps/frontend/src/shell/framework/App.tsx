@@ -3,7 +3,7 @@ import { onCleanup, onMount } from "solid-js";
 import { Toaster } from "./components/ui/Toast";
 import { Sidebar, WidgetCatalogProvider } from "./feature/sidebar";
 import styles from "./App.module.css";
-import { createFrontendSidebarController } from "../chat/adapters";
+import { createFrontendSidebarController } from "./feature/sidebar/sidebar-controller";
 import { createFrontendCanvasBootstrap } from "../canvas/canvas-bootstrap";
 import { startFrontendNotifications } from "../browser/notifications";
 import { useFrontendRuntime } from "./runtime-context";

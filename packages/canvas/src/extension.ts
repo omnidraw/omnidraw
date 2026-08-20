@@ -178,6 +178,24 @@ export type TCanvasExtensionInstall = Readonly<{
   dispose?(): void | Promise<void>;
 }>;
 
+/**
+ * Lightweight metadata for an optional extension implementation. Hosts may
+ * keep matching and frame construction in the critical graph while loading
+ * the implementation only after an accepted matching frame exists.
+ */
+export type TCanvasExtensionLoader = Readonly<{
+  name: string;
+  match(node: Readonly<TCanvasSceneNode>): boolean;
+  loadingLabel: string;
+  failureLabel: string;
+  /** Return to the select tool after this descriptor creates a widget. */
+  oneShotWidgetCreation?: boolean;
+  createWidgetNodes?(
+    context: TCanvasWidgetCreationContext,
+  ): readonly TCanvasSceneNode[] | null;
+  load(signal: AbortSignal): Promise<ICanvasExtension>;
+}>;
+
 /** Effect-free, renderer-neutral optional Canvas integration seam. */
 export interface ICanvasExtension {
   readonly name: string;

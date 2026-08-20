@@ -62,6 +62,13 @@ export const txStartupCanvas = (
       yield* state.setCanvases(listed);
       return;
     }
+    // A direct route already carries the Canvas identity. An empty catalog is
+    // metadata evidence only; the authoritative snapshot decides whether the
+    // target exists, and startup must not create or redirect in the meantime.
+    if (/^\/c\/[^/]+\/?$/u.test(args.pathname)) {
+      yield* state.setCanvases(listed);
+      return;
+    }
 
     const created = yield* catalog.create(DEFAULT_CANVAS_NAME).pipe(
       Effect.tapError((error) => notifications.showError(errorMessage(error, "Failed to create canvas"))),

@@ -16,6 +16,10 @@ import type {
   TAiChatApprovalPolicy,
   TAiChatThinkingLevel,
 } from "./contracts.js";
+import {
+  AI_CHAT_CANVAS_WIDGET_KIND,
+  createAiChatCanvasFrameContribution,
+} from "./canvas-frame.js";
 
 export type TAiChatCanvasExtensionOptions = Readonly<{
   port: IAiChatPort;
@@ -23,8 +27,6 @@ export type TAiChatCanvasExtensionOptions = Readonly<{
   host: IAiChatHostActions;
   createSessionId(): string;
 }>;
-
-export const AI_CHAT_CANVAS_WIDGET_KIND = "ai-chat" as const;
 
 export type TAiChatCanvasNodePayload = Readonly<{
   sessionId: string;
@@ -139,63 +141,12 @@ function samePayload(
     && left.thinkingLevel === right.thinkingLevel;
 }
 
-function createAiChatNode(
-  nodeId: string,
-  parentId: string | null,
-  bounds: Readonly<{ x: number; y: number; width: number; height: number }>,
-  sessionId: string,
-): TWidgetFrameNode {
-  const width = Math.max(240, bounds.width);
-  const height = Math.max(160, bounds.height);
-  return {
-    id: nodeId,
-    kind: "widget-frame",
-    parentId,
-    orderKey: "m",
-    transform: {
-      position: { x: bounds.x, y: bounds.y },
-      rotation: 0,
-      scale: { x: 1, y: 1 },
-      skew: { x: 0, y: 0 },
-      origin: { x: 0, y: 0 },
-    },
-    size: { width, height },
-    title: "AI Chat",
-    resizable: true,
-    minSize: { width: 240, height: 160 },
-    headerItems: [{
-      type: "button",
-      id: "settings",
-      label: "Settings",
-      content: { type: "text", text: "Settings" },
-    }],
-    extensions: {
-      [CANVAS_WIDGET_EXTENSION_KEY]: {
-        schemaVersion: 1,
-        type: "ui-widget",
-        kind: AI_CHAT_CANVAS_WIDGET_KIND,
-        payload: { sessionId, approvalPolicy: { mode: "manual" } },
-      },
-    },
-  };
-}
-
 /** Contributes AI Chat through Canvas' renderer-neutral widget host. */
 export function createAiChatCanvasExtension(
   options: TAiChatCanvasExtensionOptions,
 ): ICanvasExtension {
   return {
-    name: "omnidraw.ai-chat",
-    oneShotWidgetCreation: true,
-    createWidgetNodes(context) {
-      if (context.kind !== "widget") return null;
-      return [createAiChatNode(
-        context.nodeId,
-        context.parentId,
-        context.draft.worldBounds,
-        options.createSessionId(),
-      )];
-    },
+    ...createAiChatCanvasFrameContribution(options.createSessionId),
     install(context) {
       const actionHandlers = new Map<string, Map<string, () => void>>();
       const unregister = context.widgets.register({

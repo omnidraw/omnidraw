@@ -55,6 +55,11 @@ export class CanvasInstanceScope {
     ).pipe(Effect.provideService(Scope.Scope, this.#scope));
   }
 
+  /** Forks a supervised child that is interrupted before this scope closes. */
+  fork<E>(operation: Effect.Effect<void, E>): Effect.Effect<void> {
+    return Effect.forkIn(operation, this.#scope).pipe(Effect.asVoid);
+  }
+
   attempt(operation: TCleanupOperation): Effect.Effect<void> {
     return this.#attemptCleanup(operation);
   }
