@@ -1515,6 +1515,7 @@ async function persistAiChatStateAcrossReload(
         && record(aiChatPayload(node).approvalPolicy).mode === 'always-approve';
     },
   });
+  await showChatComposer(page);
   await approvalButton.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
   assert.ok((await approvalButton.getAttribute('aria-label'))?.includes('Always approve'));
 
