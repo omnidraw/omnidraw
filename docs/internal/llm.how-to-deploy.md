@@ -91,7 +91,7 @@ and skip it. Never overwrite or republish a version.
 Before publishing the Omnidraw closure, exact external dependencies must be
 available from the public npm registry:
 
-- `@omnidraw/cangine@0.6.1`, published from its owning repository;
+- `@omnidraw/cangine@0.7.0`, published from its owning repository;
 - `@omnidraw/capsule@0.16.0`.
 
 Local Verdaccio packages do not satisfy this gate. The committed `bun.lock`
@@ -103,7 +103,7 @@ lockfile still points at loopback Verdaccio or if the exact version is
 unpublished. Check the public registry explicitly:
 
 ```sh
-npm view @omnidraw/cangine@0.6.1 version dist.integrity --registry=https://registry.npmjs.org/
+npm view @omnidraw/cangine@0.7.0 version dist.integrity --registry=https://registry.npmjs.org/
 npm view @omnidraw/capsule@0.16.0 version dist.integrity --registry=https://registry.npmjs.org/
 ```
 

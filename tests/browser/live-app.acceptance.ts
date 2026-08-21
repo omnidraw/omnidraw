@@ -1244,6 +1244,37 @@ function canvasCommandWidgetNode(request: TRpcWireRequest): Readonly<Record<stri
   return null;
 }
 
+function canvasCommandNode(
+  request: TRpcWireRequest,
+  predicate: (node: Readonly<Record<string, unknown>>) => boolean,
+): Readonly<Record<string, unknown>> | null {
+  const changedItems = Array.isArray(record(request.exit?.value).changedItems)
+    ? record(request.exit?.value).changedItems as readonly unknown[]
+    : [];
+  for (const candidate of changedItems) {
+    const item = record(record(candidate).item);
+    if (predicate(item)) return item;
+  }
+  const input = record(request.input);
+  const operations = Array.isArray(input.operations) ? input.operations : [];
+  for (const candidate of operations) {
+    const operation = record(candidate);
+    if (operation.type !== 'insert' && operation.type !== 'replace') continue;
+    const item = record(operation.item);
+    if (predicate(item)) return item;
+  }
+  return null;
+}
+
+function canvasCommandDeletes(request: TRpcWireRequest, nodeId: string): boolean {
+  const input = record(request.input);
+  const operations = Array.isArray(input.operations) ? input.operations : [];
+  return operations.some((candidate) => {
+    const operation = record(candidate);
+    return operation.type === 'delete' && operation.itemId === nodeId;
+  });
+}
+
 function canvasWidgetExtension(node: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
   const extensions = record(node.extensions);
   return record(extensions['omnidraw:widget']);
@@ -1314,6 +1345,276 @@ async function createCanvas(page: Page, name: string): Promise<TCreatedCanvas> {
     id: new URL(page.url()).pathname.split('/').at(-1) ?? '',
     name,
   });
+}
+
+async function exerciseDurableArrowConnections(page: Page): Promise<Readonly<{
+  arrow: Readonly<Record<string, unknown>>;
+  arrowId: string;
+  canvasId: string;
+}>> {
+  const host = page.locator('.omnidraw-canvas-engine-host');
+  await host.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  const bounds = await host.boundingBox();
+  assert.ok(bounds !== null, 'The Arrow acceptance Canvas has no drawable bounds.');
+  const canvasId = new URL(page.url()).pathname.split('/').at(-1) ?? '';
+  assert.ok(canvasId.length > 0, 'The Arrow acceptance Canvas has no route identity.');
+
+  const lineStart = {
+    x: bounds.x + bounds.width * 0.18,
+    y: bounds.y + bounds.height * 0.74,
+  };
+  const lineEnd = {
+    x: bounds.x + bounds.width * 0.40,
+    y: bounds.y + bounds.height * 0.82,
+  };
+  let before = (await readRpcRequests(page, 'canvas.execute')).length;
+  await page.getByRole('button', { name: 'Line', exact: true }).click();
+  await page.mouse.move(lineStart.x, lineStart.y);
+  await page.mouse.down();
+  await page.mouse.move(lineEnd.x, lineEnd.y, { steps: 6 });
+  await page.mouse.up();
+  const lineCommand = await waitForSuccessfulRpcRequest({
+    afterCount: before,
+    label: 'the disposable Line creation command',
+    page,
+    path: 'canvas.execute',
+    predicate: (request) => canvasCommandNode(
+      request,
+      (node) => node.kind === 'connector' && record(node.endMarker).shape !== 'arrow',
+    ) !== null,
+  });
+  const line = canvasCommandNode(
+    lineCommand,
+    (node) => node.kind === 'connector' && record(node.endMarker).shape !== 'arrow',
+  );
+  assert.ok(line !== null && typeof line.id === 'string', 'Line creation returned no connector.');
+  before = (await readRpcRequests(page, 'canvas.execute')).length;
+  await page.keyboard.press('Delete');
+  await waitForSuccessfulRpcRequest({
+    afterCount: before,
+    label: 'the selected Line deletion command',
+    page,
+    path: 'canvas.execute',
+    predicate: (request) => canvasCommandDeletes(request, line.id as string),
+  });
+  await assertNoHandledErrorAlerts(page, 'selected Line deletion');
+
+  const disposableArrowStart = {
+    x: bounds.x + bounds.width * 0.58,
+    y: bounds.y + bounds.height * 0.78,
+  };
+  const disposableArrowEnd = {
+    x: bounds.x + bounds.width * 0.76,
+    y: bounds.y + bounds.height * 0.70,
+  };
+  before = (await readRpcRequests(page, 'canvas.execute')).length;
+  await page.getByRole('button', { name: 'Arrow', exact: true }).click();
+  await page.mouse.move(disposableArrowStart.x, disposableArrowStart.y);
+  await page.mouse.down();
+  await page.mouse.move(disposableArrowEnd.x, disposableArrowEnd.y, { steps: 6 });
+  await page.mouse.up();
+  const disposableArrowCommand = await waitForSuccessfulRpcRequest({
+    afterCount: before,
+    label: 'the disposable Arrow creation command',
+    page,
+    path: 'canvas.execute',
+    predicate: (request) => canvasCommandNode(
+      request,
+      (node) => node.kind === 'connector' && record(node.endMarker).shape === 'arrow',
+    ) !== null,
+  });
+  const disposableArrow = canvasCommandNode(
+    disposableArrowCommand,
+    (node) => node.kind === 'connector' && record(node.endMarker).shape === 'arrow',
+  );
+  assert.ok(
+    disposableArrow !== null && typeof disposableArrow.id === 'string',
+    'Disposable Arrow creation returned no connector.',
+  );
+  before = (await readRpcRequests(page, 'canvas.execute')).length;
+  await page.keyboard.press('Delete');
+  await waitForSuccessfulRpcRequest({
+    afterCount: before,
+    label: 'the selected Arrow deletion command',
+    page,
+    path: 'canvas.execute',
+    predicate: (request) => canvasCommandDeletes(
+      request,
+      disposableArrow.id as string,
+    ),
+  });
+  await assertNoHandledErrorAlerts(page, 'selected Arrow deletion');
+
+  const drawRectangle = async (
+    label: string,
+    start: Readonly<{ x: number; y: number }>,
+    end: Readonly<{ x: number; y: number }>,
+  ): Promise<Readonly<Record<string, unknown>>> => {
+    const before = (await readRpcRequests(page, 'canvas.execute')).length;
+    await page.getByRole('button', { name: 'Rectangle', exact: true }).click();
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 6 });
+    await page.mouse.up();
+    const command = await waitForSuccessfulRpcRequest({
+      afterCount: before,
+      label,
+      page,
+      path: 'canvas.execute',
+      predicate: (request) => canvasCommandNode(request, (node) => node.kind === 'rect') !== null,
+    });
+    const node = canvasCommandNode(command, (candidate) => candidate.kind === 'rect');
+    assert.ok(node !== null && typeof node.id === 'string', `${label} did not return its authored rectangle.`);
+    return node;
+  };
+
+  const firstStart = {
+    x: bounds.x + bounds.width * 0.58,
+    y: bounds.y + bounds.height * 0.52,
+  };
+  const firstEnd = { x: firstStart.x + 140, y: firstStart.y + 90 };
+  const firstCenter = {
+    x: (firstStart.x + firstEnd.x) / 2,
+    y: (firstStart.y + firstEnd.y) / 2,
+  };
+  const secondStart = {
+    x: bounds.x + bounds.width * 0.25,
+    y: bounds.y + bounds.height * 0.30,
+  };
+  const secondEnd = { x: secondStart.x + 120, y: secondStart.y + 80 };
+  const secondCenter = {
+    x: (secondStart.x + secondEnd.x) / 2,
+    y: (secondStart.y + secondEnd.y) / 2,
+  };
+  const thirdStart = {
+    x: bounds.x + bounds.width * 0.62,
+    y: bounds.y + bounds.height * 0.24,
+  };
+  const thirdEnd = { x: thirdStart.x + 110, y: thirdStart.y + 70 };
+  const thirdCenter = {
+    x: (thirdStart.x + thirdEnd.x) / 2,
+    y: (thirdStart.y + thirdEnd.y) / 2,
+  };
+  const first = await drawRectangle('the first Arrow target', firstStart, firstEnd);
+  const second = await drawRectangle('the second Arrow target', secondStart, secondEnd);
+  const third = await drawRectangle('the Arrow rebind target', thirdStart, thirdEnd);
+
+  before = (await readRpcRequests(page, 'canvas.execute')).length;
+  await page.getByRole('button', { name: 'Arrow', exact: true }).click();
+  await page.mouse.move(secondCenter.x, secondCenter.y);
+  await page.mouse.down();
+  await page.mouse.move(firstCenter.x, firstCenter.y, { steps: 8 });
+  await page.mouse.up();
+  const createdCommand = await waitForSuccessfulRpcRequest({
+    afterCount: before,
+    label: 'the bound Arrow creation command',
+    page,
+    path: 'canvas.execute',
+    predicate: (request) => canvasCommandNode(request, (node) => node.kind === 'connector') !== null,
+  });
+  const createdArrow = canvasCommandNode(createdCommand, (node) => node.kind === 'connector');
+  assert.ok(createdArrow !== null && typeof createdArrow.id === 'string', 'Arrow creation returned no connector.');
+  const arrowId = createdArrow.id;
+  const assertInsideEndpoint = (
+    endpoint: unknown,
+    expectedNodeId: unknown,
+    label: string,
+  ) => {
+    const value = record(endpoint);
+    const attachment = record(value.attachment);
+    const fixedPoint = record(attachment.fixedPoint);
+    assert.equal(value.type, 'node', `${label} is not node-bound.`);
+    assert.equal(value.nodeId, expectedNodeId, `${label} bound to the wrong target.`);
+    assert.equal(value.anchor, 'auto', `${label} did not use the auto anchor.`);
+    assert.equal(attachment.mode, 'inside', `${label} did not retain inside semantics.`);
+    assert.ok(Math.abs(Number(fixedPoint.x) - 0.5) < 0.000_01, `${label} x was not target-relative center.`);
+    assert.ok(Math.abs(Number(fixedPoint.y) - 0.5) < 0.000_01, `${label} y was not target-relative center.`);
+  };
+  assertInsideEndpoint(createdArrow.from, second.id, 'Created Arrow tail');
+  assertInsideEndpoint(createdArrow.to, first.id, 'Created Arrow head');
+  assert.equal(record(createdArrow.endMarker).shape, 'arrow');
+
+  before = (await readRpcRequests(page, 'canvas.execute')).length;
+  await page.getByRole('button', { name: 'Select', exact: true }).click();
+  const arrowMidpoint = {
+    x: (secondCenter.x + firstCenter.x) / 2,
+    y: (secondCenter.y + firstCenter.y) / 2,
+  };
+  await page.mouse.dblclick(arrowMidpoint.x, arrowMidpoint.y, { delay: 70 });
+  await page.mouse.move(firstCenter.x, firstCenter.y);
+  await page.mouse.down();
+  await page.mouse.move(thirdCenter.x, thirdCenter.y, { steps: 8 });
+  await page.mouse.up();
+  const reboundCommand = await waitForSuccessfulRpcRequest({
+    afterCount: before,
+    label: 'the rebound Arrow head command',
+    page,
+    path: 'canvas.execute',
+    predicate: (request) => {
+      const node = canvasCommandNode(request, (candidate) => candidate.id === arrowId);
+      return record(node?.to).nodeId === third.id;
+    },
+  });
+  const reboundArrow = canvasCommandNode(
+    reboundCommand,
+    (candidate) => candidate.id === arrowId,
+  );
+  assert.ok(reboundArrow !== null, 'Arrow rebinding returned no authored connector.');
+  assertInsideEndpoint(reboundArrow.from, second.id, 'Rebound Arrow tail');
+  assertInsideEndpoint(reboundArrow.to, third.id, 'Rebound Arrow head');
+  assert.equal(record(reboundArrow.endMarker).shape, 'arrow');
+
+  const secondMoveHandle = { x: secondCenter.x - 34, y: secondCenter.y - 20 };
+  before = (await readRpcRequests(page, 'canvas.execute')).length;
+  await page.mouse.click(secondMoveHandle.x, secondMoveHandle.y);
+  await page.mouse.move(secondMoveHandle.x, secondMoveHandle.y);
+  await page.mouse.down();
+  await page.mouse.move(secondMoveHandle.x + 48, secondMoveHandle.y + 24, { steps: 6 });
+  await page.mouse.up();
+  const movedTargetCommand = await waitForSuccessfulRpcRequest({
+    afterCount: before,
+    label: 'the moved Arrow source target',
+    page,
+    path: 'canvas.execute',
+    predicate: (request) => canvasCommandNode(request, (node) => node.id === second.id) !== null,
+  });
+  const movedTarget = canvasCommandNode(movedTargetCommand, (node) => node.id === second.id);
+  assert.ok(movedTarget !== null, 'Target movement returned no authored target.');
+  assert.notDeepEqual(record(movedTarget.transform).position, record(second.transform).position);
+  await assertNoHandledErrorAlerts(page, 'durable Arrow connection interactions');
+  return Object.freeze({
+    arrow: reboundArrow,
+    arrowId,
+    canvasId,
+  });
+}
+
+async function assertArrowRecoveryAfterBackendRestart(
+  page: Page,
+  evidence: Readonly<{
+    arrow: Readonly<Record<string, unknown>>;
+    arrowId: string;
+    canvasId: string;
+  }>,
+): Promise<void> {
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.locator('.omnidraw-canvas-host').waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  await waitForRpcConnection(page);
+  const snapshotRequest = await waitForSuccessfulRpcRequest({
+    afterCount: 0,
+    label: 'the Canvas snapshot after Arrow backend recovery',
+    page,
+    path: 'canvas.snapshot',
+    predicate: (request) => record(request.input).canvasId === evidence.canvasId,
+  });
+  const items = Array.isArray(record(snapshotRequest.exit?.value).items)
+    ? record(snapshotRequest.exit?.value).items as readonly unknown[]
+    : [];
+  const recovered = items
+    .map((item) => record(record(item).item))
+    .find((item) => item.id === evidence.arrowId);
+  assert.deepEqual(recovered, evidence.arrow, 'Backend restart/reload changed the exact durable Arrow endpoints.');
+  await assertNoHandledErrorAlerts(page, 'Arrow backend restart recovery');
 }
 
 async function placeShortAiChatWidget(page: Page): Promise<Readonly<{
@@ -2600,6 +2901,9 @@ async function runBrowserSuite(
     const initialCanvasId = new URL(page.url()).pathname.split('/').at(-1) ?? '';
     assert.ok(initialCanvasId.length > 0, 'Startup did not create the clean-home Canvas.');
 
+    console.log('[browser:live] durable Arrow tail/head binding and target movement');
+    const arrowEvidence = await exerciseDurableArrowConnections(page);
+
     console.log('[browser:live] fresh AI Chat widget short-drag portal and connection');
     const initialChat = await placeShortAiChatWidget(page);
 
@@ -2615,7 +2919,9 @@ async function runBrowserSuite(
       page,
       restartBackend,
     });
-    await page.getByRole('button', { name: 'Restore AI Chat', exact: true }).click();
+    await assertArrowRecoveryAfterBackendRestart(page, arrowEvidence);
+    const restoreChat = page.getByRole('button', { name: 'Restore AI Chat', exact: true });
+    if (await restoreChat.isVisible()) await restoreChat.click();
     await page.getByRole('button', { name: 'Maximize AI Chat', exact: true }).waitFor({
       state: 'visible',
       timeout: ROUTE_TIMEOUT_MS,
@@ -2753,7 +3059,7 @@ async function runBrowserSuite(
     ));
     assert.deepEqual(unexpectedBrowserErrors, [], browserErrors.join('\n'));
     assert.deepEqual(badResponses, [], badResponses.join('\n'));
-    console.log('[browser:live] 16 routes, streamed AI Chat/history, Preview function/resource bridge, visible-first bounded runtime/cache isolation, Preview success/failure usability, durable preferences, restart recovery, and WebSocket fencing passed');
+    console.log('[browser:live] 16 routes, durable Arrow endpoints, streamed AI Chat/history, Preview function/resource bridge, visible-first bounded runtime/cache isolation, Preview success/failure usability, restart recovery, and WebSocket fencing passed');
   } finally {
     await page.close();
     await browser.close();

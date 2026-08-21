@@ -98,4 +98,31 @@ describe('Cangine contract adapter', () => {
       schemaVersion: '0.9.0',
     } as unknown as TCanvasDocument)).toThrow('schemaVersion');
   });
+
+  test('losslessly preserves durable connector attachments and fixed segments only', () => {
+    const connector = CANVAS_CONFORMANCE_AUTHORED_NODES.find(
+      (node) => node.kind === 'connector',
+    )!;
+    if (connector.kind !== 'connector') throw new Error('Missing connector fixture.');
+    const runtime = fnCanvasContractNodeToCangine(connector);
+    expect(runtime).toMatchObject({
+      kind: 'connector',
+      from: {
+        type: 'node', anchor: 'auto',
+        attachment: { mode: 'inside', fixedPoint: { x: 0.75, y: 0.5 } },
+      },
+      to: {
+        type: 'node', anchor: 'auto',
+        attachment: { mode: 'orbit', fixedPoint: { x: 0, y: 0.5 } },
+      },
+      fixedSegments: [{
+        id: 'middle-leg', start: { x: 80, y: 20 }, end: { x: 120, y: 20 },
+      }],
+    });
+    expect(fnCangineNodeToAuthoredCanvasContract(runtime)).toEqual(connector);
+    expect(() => fnCangineNodeToCanvasContract({
+      ...runtime,
+      bindingTargetOutline: { minX: 0, minY: 0, maxX: 1, maxY: 1 },
+    } as unknown as TSceneNode)).toThrow('bindingTargetOutline');
+  });
 });

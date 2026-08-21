@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/canvas",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Portable Solid canvas host, Cangine runtime, and optimistic document client for Omnidraw.",
   "type": "module",
   "license": "MIT",
@@ -59,7 +59,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@omnidraw/cangine": "0.6.1",
+    "@omnidraw/cangine": "0.7.0",
     "@omnidraw/canvas-contract": "workspace:*",
     "@omnidraw/theme": "workspace:*",
     "effect": "4.0.0-rc.108"

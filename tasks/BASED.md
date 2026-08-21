@@ -356,7 +356,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A123](a/A123.md) - sidebar: align widget icons with row labels
 - [x]: [A124](a/A124.md) - Widget runtime: visible-first startup and shared artifact caching
 - [x]: [A125](a/A125.md) - Preview: explicitly replace a frame with the published widget
-- [ ]: [A126](a/A126.md) - canvas: Cangine 0.7 arrow head and tail connections
+- [x]: [A126](a/A126.md) - canvas: Cangine 0.7 arrow head and tail connections
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port

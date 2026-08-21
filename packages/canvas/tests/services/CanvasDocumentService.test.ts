@@ -1,6 +1,7 @@
 import type {
   TGroupNode,
   IInfiniteCanvasEngine,
+  TConnectorNode,
   TImageNode,
   TPortalRegistration,
   TRectNode,
@@ -104,6 +105,36 @@ function group(id = 'group-a'): TGroupNode {
     kind: 'group',
     transform,
     layout: { type: 'free' },
+  };
+}
+
+function connector(id = 'connector-a'): TConnectorNode {
+  return {
+    id,
+    parentId: null,
+    orderKey: 'C',
+    kind: 'connector',
+    transform,
+    from: {
+      type: 'node', nodeId: 'source', anchor: 'auto',
+      attachment: { mode: 'inside', fixedPoint: { x: 0.75, y: 0.5 } },
+    },
+    to: {
+      type: 'node', nodeId: 'target', anchor: 'auto',
+      attachment: { mode: 'orbit', fixedPoint: { x: 0, y: 0.5 } },
+    },
+    routing: { type: 'orthogonal', cornerRadius: 8 },
+    fixedSegments: [{
+      id: 'middle-leg', start: { x: 40, y: 30 }, end: { x: 120, y: 30 },
+    }],
+    stroke: {
+      width: 2,
+      paint: {
+        type: 'solid',
+        color: { space: 'srgb', r: 0, g: 0, b: 0, a: 1 },
+      },
+    },
+    endMarker: { shape: 'arrow', size: 12, filled: true },
   };
 }
 
@@ -1280,6 +1311,63 @@ describe('CanvasDocumentService', () => {
     await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(3));
     await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
     expect(service.revision).toBe(3);
+    await service.dispose();
+  });
+
+  test('round-trips endpoint attachments and fixed segments through history and acknowledgements', async () => {
+    const source = rect('source');
+    const target = rect('target', 240);
+    const before = connector();
+    const after: TConnectorNode = {
+      ...before,
+      from: { type: 'point', point: { x: 25, y: 30 } },
+      to: {
+        type: 'node', nodeId: 'source', anchor: 'auto',
+        attachment: { mode: 'inside', fixedPoint: { x: 0.25, y: 0.75 } },
+      },
+      fixedSegments: [{
+        id: 'vertical-leg', start: { x: 90, y: 20 }, end: { x: 90, y: 100 },
+      }],
+    };
+    let durableRevision = 0;
+    const transport = transportWith(
+      snapshot([item(source), item(target), item(before)]),
+      async (command: TCanvasCommand) => {
+        durableRevision += 1;
+        const durable = durableRevision === 2 ? before : after;
+        return event(
+          command.commandId,
+          durableRevision,
+          [item(durable, durableRevision + 1)],
+        );
+      },
+    );
+    const fake = fakeEngine();
+    let commandSequence = 0;
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => `connector-command-${++commandSequence}`,
+    });
+    await service.start(fake.engine);
+    service.history.attach();
+
+    service.commit(mutation(
+      fake.engine,
+      'rebind-endpoints',
+      [{ type: 'upsert', node: runtimeNode(after) }],
+      [after.id],
+    ));
+    expect(service.authoredNode(after.id)).toEqual(runtimeNode(after));
+    expect(service.history.undo()).toBe(true);
+    expect(service.authoredNode(before.id)).toEqual(runtimeNode(before));
+    expect(service.history.redo()).toBe(true);
+    expect(service.authoredNode(after.id)).toEqual(runtimeNode(after));
+
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(service.revision).toBe(3);
+    expect(service.item(after.id)?.item).toEqual(after);
     await service.dispose();
   });
 

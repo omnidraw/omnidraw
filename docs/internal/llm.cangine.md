@@ -1,4 +1,4 @@
-# `@omnidraw/cangine` Library Guide — 0.6.1
+# `@omnidraw/cangine` Library Guide — 0.7.0
 
 This is the consumer guide for `@omnidraw/cangine`. It covers installation,
 ordinary application usage, every public engine service and package
@@ -8,13 +8,13 @@ and its host application.
 The TypeScript declarations distributed with the installed package are the
 authoritative API inventory for that release.
 
-Version `0.6.1` adds additive performance diagnostics and improves hot paths
-without changing document schemas or existing call signatures. Native
-coalesced pointer samples are processed in order with frame-bounded preview
-publication, the built-in WebGL2 renderer avoids redundant submission-state
-calls, and registered-font shaping loads its private `fontkit` implementation
-only on first use. System-font fallback remains synchronous; bidirectional
-text support remains eagerly available.
+Version `0.7.0` adds target-relative inside/orbit connector attachments,
+frame-bounded endpoint previews, and authorable elbow fixed segments while
+retaining the `1.0.0` snapshot envelope. Group-aware creation and rebinding,
+live Alt/Ctrl/Cmd attachment modifiers, legacy-tail editing, simple orthogonal
+topology, and terminal preview flushing are included. The additive performance
+diagnostics and renderer/text hot-path improvements introduced in `0.6.1`
+remain available.
 
 ## 1. What the library provides
 
@@ -47,9 +47,9 @@ business logic, permissions, or UI.
 Install the package from npm:
 
 ```bash
-npm install @omnidraw/cangine@0.6.1
+npm install @omnidraw/cangine@0.7.0
 # or
-bun add @omnidraw/cangine@0.6.1
+bun add @omnidraw/cangine@0.7.0
 ```
 
 Public entrypoints:
@@ -132,7 +132,7 @@ a render backend.
 
 The supported production path is:
 
-- standards-compliant ESM with TypeScript declarations for Bun `1.4.0+` and
+- standards-compliant ESM with TypeScript declarations for Bun `1.3.14+` and
   Node `20.19.0+`;
 - browser execution on Chromium, Firefox, and WebKit;
 - WebGL2 retained 2D rendering;
@@ -1539,7 +1539,7 @@ onCommit(stroke) {
 
 Only `"native"` and `"lost-capture"` cancellation are recoverable. Blur, context loss, surface removal, engine destruction, dispatch failure, explicit cancellation, replacement, sample exhaustion, and query failure still cancel. Marquee and transform gestures are always cancel-only. Applications retain final policy: for example, they may discard a recovered creation whose `belowThreshold` flag is true.
 
-`beginMarquee`, `beginStroke`, and `beginConnector` otherwise share capture, cancellation, immutable samples, and engine-owned transient preview. Stroke begin/update callbacks receive only the newly accepted batch and total count, while commit receives the complete stroke once. Coalesced samples pass through the same viewport-distance filter and one aggregate `maxSamples` ceiling as ordinary moves. Accepted samples are never discarded for presentation performance: the SVG preview stays incrementally chunked and publishes its latest complete state at most once per engine frame, while pointer-up synchronously includes its final accepted sample and commits without waiting for another frame. Connector previews draw the shared geometry service's resolved route. `constrainDraft` supplies app-owned aspect/center/snap bounds, while the root `filterStrokeSamplesByDistance()` helper filters imported samples in an explicit world or viewport space. Move transforms activate after three viewport CSS pixels and unchanged releases cancel, preventing selection clicks from producing mutations or history. The engine does not choose selection meaning, brush style, node kind, connector eligibility, or history.
+`beginMarquee`, `beginStroke`, and `beginConnector` otherwise share capture, cancellation, immutable samples, and engine-owned transient preview. Stroke begin/update callbacks receive only the newly accepted batch and total count, while commit receives the complete stroke once. Coalesced samples pass through the same viewport-distance filter and one aggregate `maxSamples` ceiling as ordinary moves. Accepted samples are never discarded for presentation performance: the SVG preview stays incrementally chunked and publishes its latest complete state at most once per engine frame, while pointer-up synchronously includes its final accepted sample and commits without waiting for another frame. Connector previews also collapse raw moves to the latest sample per engine frame, perform one indexed candidate query for that presentation, recompute the release synchronously, and draw the shared geometry service's resolved route. `constrainDraft` supplies app-owned aspect/center/snap bounds, while the root `filterStrokeSamplesByDistance()` helper filters imported samples in an explicit world or viewport space. Move transforms activate after three viewport CSS pixels and unchanged releases cancel, preventing selection clicks from producing mutations or history. The engine does not choose selection meaning, brush style, node kind, connector eligibility, or history.
 
 For pressure-sensitive freehand output, convert the committed samples with the engine-owned outline pipeline:
 
@@ -1595,13 +1595,21 @@ engine.scene.transaction((tx) => {
     from: {
       type: "node",
       nodeId: "node-a",
-      anchor: "right",
+      anchor: "auto",
+      attachment: {
+        mode: "inside",
+        fixedPoint: { x: 0.72, y: 0.35 },
+      },
       gap: 8,
     },
     to: {
       type: "node",
       nodeId: "node-b",
-      anchor: "left",
+      anchor: "auto",
+      attachment: {
+        mode: "orbit",
+        fixedPoint: { x: 0, y: 0.62 },
+      },
       gap: 8,
     },
     routing: {
@@ -1609,6 +1617,11 @@ engine.scene.transaction((tx) => {
       cornerRadius: 8,
       obstaclePadding: 12,
     },
+    fixedSegments: [{
+      id: "main-horizontal",
+      start: { x: 180, y: 120 },
+      end: { x: 320, y: 120 },
+    }],
     avoidNodeIds: ["obstacle"],
     stroke: {
       width: 2,
@@ -1628,6 +1641,20 @@ console.log(route.path, route.bounds);
 ```
 
 For production code, narrow `scene.get()` by `kind` rather than using the example cast. Unresolved connector references produce deterministic fallback geometry and diagnostics instead of historical nondeterminism.
+
+`attachment.fixedPoint` is normalized in the target's intrinsic local AABB.
+Use `inside` when the endpoint should stay at that exact semantic point as the
+target moves, rotates, or resizes. Use `orbit` when the normalized point
+expresses a direction and the endpoint must remain on the target's supported
+outline. `offset` and `gap` are applied afterwards. Orthogonal connectors force
+editor-created bindings to `orbit`, matching elbow geometry expectations.
+
+`fixedSegments` are ordered connector-local horizontal or vertical route
+segments. The orthogonal router preserves each segment exactly and reroutes
+only the unpinned legs. They require `routing.type === "orthogonal"`, unique
+non-empty IDs, and cannot be mixed with legacy `waypoints`. This separation is
+intentional: a waypoint pins one point, while a fixed segment pins an entire
+elbow leg.
 
 ## 17. Resources
 
@@ -2877,10 +2904,35 @@ starts only after three CSS pixels, so a stationary double-click remains a
 click. In edit mode a segment midpoint splits and continues as an authored
 anchor in the same captured gesture. Curve controls stay hidden. Resize moves
 only authored anchors tied to the selected min/max side; it never emits path
-scale. Connector endpoints retain node attachments through local offsets,
-inserted anchors persist as `waypoints`, and `setSegmentMode()` selects
-straight, smooth, or orthogonal elbow routing. One core effective-node preview
-feeds rendering, bounds, picking, and dependencies before one durable commit.
+scale. Connector endpoint editing performs one spatially indexed candidate
+query per presented frame. Bindable descendants of a selectable group resolve
+to that group, and the normalized attachment domain is the finite union of its
+bindable descendants in group-local space. This applies identically when a
+new arrow starts/ends on grouped content and when an existing endpoint is
+rebound. Drop an endpoint inside a target for an exact
+normalized `inside` attachment, or within the ten-CSS-pixel acquisition band
+for an outline-following `orbit` attachment. Alt forces `inside`; Ctrl/Cmd
+temporarily disables binding. Modifier key-down/key-up republishes the latest
+captured endpoint immediately, so changing Alt or Ctrl/Cmd does not require an
+extra pointer move. A target outline appears during acquisition.
+Captured samples are latest-per-frame and pointer-up flushes pending geometry
+before the single durable commit; captured moves suppress the otherwise
+redundant implicit hit query.
+
+`setSegmentMode()` selects straight, smooth, or orthogonal elbow routing.
+All connectors reserve their endpoint hit areas and omit generic box-resize
+handles; this is especially important for a straight arrow whose bounds corner
+coincides with its head or tail. Elbows bind on the outline and replace generic
+rotation with route-segment handles in edit mode. Dragging a generated segment materializes
+and moves a durable `fixedSegments` entry perpendicular to its axis. Double-
+clicking a fixed segment releases it and lets the router recompute that leg.
+If a segment position would make adjacent legs reverse or non-adjacent legs
+cross, overlap, or touch, the editor retains the last valid simple-polyline
+preview instead of committing the retraced route.
+Leaving elbow mode removes incompatible fixed segments. One core effective-
+node preview feeds rendering, bounds, picking, and dependencies before one
+durable commit; effective projected nodes retain stable identity within a
+projection generation so geometry and backend consumers share cache entries.
 
 `SelectionStyleController` is separate from the command menu. Construct it
 from the editor and render its immutable state in the host framework:
@@ -3125,7 +3177,7 @@ persistence, grouping, and collaboration policy.
 | Surface | Members |
 |---|---|
 | `ICamera2DController` | `state`, `constraints`, `viewportSize`, `set`, `setConstraints`, `panByScreen`, `panByWorld`, `zoomAtViewportPoint`, `rotateAtViewportPoint`, `fitBounds`, `animateTo`, `cancelAnimation`, `clientToViewport`, `viewportToClient`, `viewportToWorld`, `worldToViewport`, `worldToClient`, `worldRectToViewport`, `visibleWorldBounds`, `worldToViewportMatrix`, `viewportToWorldMatrix`, `subscribe` |
-| `IGeometryService` | `localTransform`, `worldTransform`, `inverseWorldTransform`, `localToWorld`, `worldToLocal`, `localBounds`, `worldBounds`, `orientedWorldBounds`, `unionBounds`, `intersectsRect`, `intersectsPolygon`, `nearestPoint`, `resolveAnchor`, `registerNamedAnchors`, `routeConnector`, `resolveConnectorLabelPlacement`, `pathLength`, `samplePath`, `flattenPath`, `intersectPaths` |
+| `IGeometryService` | `localTransform`, `worldTransform`, `inverseWorldTransform`, `localToWorld`, `worldToLocal`, `localBounds`, `connectorAttachmentLocalBounds`, `worldBounds`, `orientedWorldBounds`, `unionBounds`, `intersectsRect`, `intersectsPolygon`, `nearestPoint`, `resolveAnchor`, `registerNamedAnchors`, `routeConnector`, `resolveConnectorLabelPlacement`, `pathLength`, `samplePath`, `flattenPath`, `intersectPaths` |
 | `IInputController` | `subscribe`, `hitTestViewport`, `hitTestWorld`, `queryWorldRect`, `queryWorldPolygon`, `capturePointer`, `releasePointer`, `createClickRecognizer`, `focus`, `blur` |
 | `IClickRecognizer` | `subscribe`, `reset`, `destroy` |
 
@@ -3188,7 +3240,7 @@ Three.js objects never cross this boundary.
 
 ### 33.8 `/geometry` exports
 
-The geometry entrypoint is pure and browser-independent:
+The geometry entrypoint is renderer-free and browser-independent:
 
 | Group | Exports |
 |---|---|

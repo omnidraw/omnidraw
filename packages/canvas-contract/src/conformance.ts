@@ -150,10 +150,25 @@ export const CANVAS_CONFORMANCE_AUTHORED_NODES: TCanvasSceneNode[] = [
     orderKey: "F",
     kind: "connector",
     transform,
-    from: { type: "node", nodeId: "rect-a", anchor: "right", gap: 4 },
-    to: { type: "node", nodeId: "ellipse-a", anchor: { name: "input" } },
+    from: {
+      type: "node",
+      nodeId: "rect-a",
+      anchor: "auto",
+      attachment: { mode: "inside", fixedPoint: { x: 0.75, y: 0.5 } },
+      gap: 4,
+    },
+    to: {
+      type: "node",
+      nodeId: "ellipse-a",
+      anchor: "auto",
+      attachment: { mode: "orbit", fixedPoint: { x: 0, y: 0.5 } },
+    },
     routing: { type: "orthogonal", cornerRadius: 6, preferredAxis: "horizontal" },
-    waypoints: [{ x: 120, y: 20 }],
+    fixedSegments: [{
+      id: "middle-leg",
+      start: { x: 80, y: 20 },
+      end: { x: 120, y: 20 },
+    }],
     stroke: { paint: { type: "solid", color: black }, width: 2 },
     endMarker: { shape: "arrow", size: 8, filled: true },
     avoidNodeIds: ["polygon-a"],
@@ -313,6 +328,72 @@ export const CANVAS_CONFORMANCE_INVALID_DOCUMENTS: readonly TCanvasInvalidConfor
     },
     expectedIssueCode: "IMAGE_EXTENSION_REQUIRED",
   },
+  {
+    name: "connector-attachment-outside-normalized-range",
+    value: {
+      ...CANVAS_CONFORMANCE_DOCUMENT,
+      items: CANVAS_CONFORMANCE_DOCUMENT.items.map((snapshot) => snapshot.item.kind === "connector"
+        ? {
+            ...snapshot,
+            item: {
+              ...snapshot.item,
+              from: {
+                type: "node",
+                nodeId: "rect-a",
+                anchor: "auto",
+                attachment: { mode: "inside", fixedPoint: { x: 1.01, y: 0.5 } },
+              },
+            },
+          }
+        : snapshot),
+    },
+    expectedIssueCode: "NUMBER_TOO_LARGE",
+  },
+  {
+    name: "connector-attachment-named-anchor",
+    value: {
+      ...CANVAS_CONFORMANCE_DOCUMENT,
+      items: CANVAS_CONFORMANCE_DOCUMENT.items.map((snapshot) => snapshot.item.kind === "connector"
+        ? {
+            ...snapshot,
+            item: {
+              ...snapshot.item,
+              from: { ...snapshot.item.from, anchor: "right" },
+            },
+          }
+        : snapshot),
+    },
+    expectedIssueCode: "CONNECTOR_ATTACHMENT_REQUIRES_AUTO_ANCHOR",
+  },
+  {
+    name: "connector-diagonal-fixed-segment",
+    value: {
+      ...CANVAS_CONFORMANCE_DOCUMENT,
+      items: CANVAS_CONFORMANCE_DOCUMENT.items.map((snapshot) => snapshot.item.kind === "connector"
+        ? {
+            ...snapshot,
+            item: {
+              ...snapshot.item,
+              fixedSegments: [{ id: "diagonal", start: { x: 0, y: 0 }, end: { x: 1, y: 1 } }],
+            },
+          }
+        : snapshot),
+    },
+    expectedIssueCode: "DIAGONAL_CONNECTOR_FIXED_SEGMENT",
+  },
+  {
+    name: "connector-fixed-segment-with-waypoints",
+    value: {
+      ...CANVAS_CONFORMANCE_DOCUMENT,
+      items: CANVAS_CONFORMANCE_DOCUMENT.items.map((snapshot) => snapshot.item.kind === "connector"
+        ? {
+            ...snapshot,
+            item: { ...snapshot.item, waypoints: [{ x: 10, y: 20 }] },
+          }
+        : snapshot),
+    },
+    expectedIssueCode: "CONNECTOR_FIXED_SEGMENTS_WITH_WAYPOINTS",
+  },
 ];
 
 export type TCanvasCanonicalConformanceVector = Readonly<{
@@ -331,5 +412,13 @@ export const CANVAS_CONFORMANCE_CANONICAL_JSON: readonly TCanvasCanonicalConform
     name: "unicode-and-array-order",
     value: { omega: "Ω", array: [3, 2, 1] },
     canonical: "{\"array\":[3,2,1],\"omega\":\"Ω\"}",
+  },
+  {
+    name: "connector-attachment-and-fixed-segment",
+    value: {
+      attachment: { mode: "orbit", fixedPoint: { y: 0.25, x: 1 } },
+      fixedSegments: [{ end: { y: 4, x: 8 }, id: "leg", start: { y: 4, x: 2 } }],
+    },
+    canonical: "{\"attachment\":{\"fixedPoint\":{\"x\":1,\"y\":0.25},\"mode\":\"orbit\"},\"fixedSegments\":[{\"end\":{\"x\":8,\"y\":4},\"id\":\"leg\",\"start\":{\"x\":2,\"y\":4}}]}",
   },
 ];

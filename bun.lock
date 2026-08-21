@@ -6,7 +6,7 @@
       "name": "omnidraw-workspace",
       "devDependencies": {
         "@changesets/cli": "^2.31.1",
-        "@omnidraw/cangine": "0.6.1",
+        "@omnidraw/cangine": "0.7.0",
         "bun-types": "1.4.0",
         "effect": "catalog:",
         "playwright": "catalog:",
@@ -69,9 +69,9 @@
     },
     "packages/canvas": {
       "name": "@omnidraw/canvas",
-      "version": "0.11.0",
+      "version": "0.12.0",
       "dependencies": {
-        "@omnidraw/cangine": "0.6.1",
+        "@omnidraw/cangine": "0.7.0",
         "@omnidraw/canvas-contract": "workspace:*",
         "@omnidraw/theme": "workspace:*",
         "effect": "4.0.0-rc.108",
@@ -92,7 +92,7 @@
     },
     "packages/canvas-contract": {
       "name": "@omnidraw/canvas-contract",
-      "version": "0.7.0",
+      "version": "0.8.0",
       "devDependencies": {
         "bun-types": "1.4.0",
         "typescript": "7.0.2",
@@ -100,7 +100,7 @@
     },
     "packages/component-ai-chat": {
       "name": "@omnidraw/component-ai-chat",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "dependencies": {
         "@omnidraw/canvas": "workspace:*",
         "dompurify": "^3.4.11",
@@ -490,7 +490,7 @@
 
     "@omnidraw/backend": ["@omnidraw/backend@workspace:apps/backend"],
 
-    "@omnidraw/cangine": ["@omnidraw/cangine@0.6.1", "", { "dependencies": { "bidi-js": "1.0.3", "fontkit": "2.0.4", "perfect-freehand": "1.2.3", "tess2": "1.0.0", "three": "0.185.1" } }, "sha512-xaa6hcLWy0pLJW6Gu+s96y9tulJBp3djl0da3ZYsVGWGqcSJMliCJIpcjBZFIVb3uTQkLO/8Xe/3dnWfaACOdA=="],
+    "@omnidraw/cangine": ["@omnidraw/cangine@0.7.0", "", { "dependencies": { "bidi-js": "1.0.3", "fontkit": "2.0.4", "perfect-freehand": "1.2.3", "tess2": "1.0.0", "three": "0.185.1" } }, "sha512-mxVflwyy/q1oF0u3XeIQnB7RK6Xkncnh7VSzhsGSLdfzgKdr7TQmwtUV4aPmgPoLA3UkV7O9tt4CuI66nnW6sQ=="],
 
     "@omnidraw/canvas": ["@omnidraw/canvas@workspace:packages/canvas"],
 

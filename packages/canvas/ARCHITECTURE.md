@@ -111,7 +111,7 @@ Style mutations still commit through the controlled
 editor port into `CanvasDocumentService`; the controller is not a second scene
 writer. Shutdown destroys it before the editor session.
 Theme changes update the mounted editor selection and path appearance through
-Cangine 0.6.1 setters without rebuilding that session. Cangine's creation
+Cangine 0.7.0 setters without rebuilding that session. Cangine's creation
 decorator adds resolved concrete fallback plus semantic intent for every
 standard tool. Its extension-only style-mutation decorator adds or removes the
 same intent after Cangine has resolved compatible leaves, so the finalized

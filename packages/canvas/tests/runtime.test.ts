@@ -21,6 +21,7 @@ const runtimeState = vi.hoisted(() => ({
   engine: null as unknown,
   engineConfig: null as unknown,
   events: [] as string[],
+  sceneListeners: [] as Array<(event: unknown) => void>,
   inputListeners: [] as Array<
     (event: unknown) => TMockInputDisposition | void
   >,
@@ -134,6 +135,13 @@ vi.mock('@omnidraw/cangine/editor', () => ({
       },
       setSelectionAppearance(appearance: unknown) {
         runtimeState.selectionAppearances.push(appearance);
+      },
+      setSelection(nodeIds: readonly string[], options: { focusedNodeId?: string | null } = {}) {
+        runtimeState.selectedNodeIds.splice(0, runtimeState.selectedNodeIds.length, ...nodeIds);
+        editor.state.focusedNodeId = options.focusedNodeId ?? nodeIds[0] ?? null;
+      },
+      clearSelection() {
+        editor.setSelection([], { focusedNodeId: null });
       },
       suppressSelectionOverlay: vi.fn(),
       restoreSelectionOverlay: vi.fn(),
@@ -351,11 +359,24 @@ describe('canvas runtime composition', () => {
         get() {
           return runtimeState.selectedNode;
         },
+        has(nodeId: string) {
+          return (
+            typeof runtimeState.selectedNode === 'object'
+            && runtimeState.selectedNode !== null
+            && 'id' in runtimeState.selectedNode
+            && runtimeState.selectedNode.id === nodeId
+          );
+        },
         get revision() {
           return 1;
         },
-        subscribe() {
-          return () => runtimeState.events.push('trace:scene:release');
+        subscribe(listener: (event: unknown) => void) {
+          runtimeState.sceneListeners.push(listener);
+          return () => {
+            const index = runtimeState.sceneListeners.indexOf(listener);
+            if (index !== -1) runtimeState.sceneListeners.splice(index, 1);
+            runtimeState.events.push('trace:scene:release');
+          };
         },
       },
       projections: {
@@ -544,6 +565,10 @@ describe('canvas runtime composition', () => {
       clipboardImage: {
         imageImportPort: unknown;
       };
+      paths: {
+        appearance: unknown;
+        resolveBindableNodeId?: unknown;
+      };
     };
     const dropConfig = runtimeState.dropConfig as {
       dropTarget: HTMLElement;
@@ -623,6 +648,10 @@ describe('canvas runtime composition', () => {
     expect(sessionConfig.clipboardImage.imageImportPort).toBe(
       runtimeState.documentInstance,
     );
+    expect(sessionConfig.paths.appearance).toEqual(
+      fnCanginePathAppearance(BUILTIN_THEMES[3]!.canvas.path),
+    );
+    expect(sessionConfig.paths).not.toHaveProperty('resolveBindableNodeId');
     expect(dropConfig.imageImportPort).toBe(runtimeState.documentInstance);
     expect(dropConfig.dropTarget).toBe(container);
     expect(dropConfig.fileInput.accept).toBe(
@@ -1061,6 +1090,7 @@ describe('canvas runtime composition', () => {
 
     widgets.state.maximizedNodeId = null;
     runtimeState.events.length = 0;
+    runtimeState.sceneListeners.length = 0;
     runtimeState.widgetListener?.({});
     expect(runtime.shell().kind).not.toBe('maximized-widget');
     expect(runtimeState.events).toContain('input:focus');
@@ -1420,6 +1450,42 @@ describe('canvas runtime composition', () => {
     expect(runtimeState.events.filter(
       (event) => event === 'selection-style:destroy',
     )).toHaveLength(1);
+  });
+
+  test('drops removed connector IDs before later scene subscribers rebuild overlays', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const runtime = buildRuntime({
+      canvasId: 'canvas-a',
+      container,
+      transport: {} as never,
+      createId: () => 'id-a',
+      wait,
+      themeService,
+    });
+    await Effect.runPromise(runtime.bootEffect());
+
+    const editor = runtime.editor()!;
+    runtimeState.selectedNode = {
+      id: 'connector-a',
+      kind: 'connector',
+      routing: { type: 'straight' },
+    };
+    editor.setSelection(['connector-a'], { focusedNodeId: 'connector-a' });
+    runtimeState.selectedNode = null;
+
+    let laterSubscriberSawStaleSelection = false;
+    runtimeState.sceneListeners.push(() => {
+      laterSubscriberSawStaleSelection = editor.state.selectedNodeIds
+        .includes('connector-a');
+    });
+    for (const listener of [...runtimeState.sceneListeners]) listener({ type: 'changed' });
+
+    expect(editor.state.selectedNodeIds).toEqual([]);
+    expect(editor.state.focusedNodeId).toBeNull();
+    expect(laterSubscriberSawStaleSelection).toBe(false);
+
+    await Effect.runPromise(runtime.shutdownEffect());
   });
 
   test('exposes only supported selected connector segment changes', async () => {

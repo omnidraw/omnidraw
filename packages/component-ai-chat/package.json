@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/component-ai-chat",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Portable Solid AI Chat component and Canvas contribution for Omnidraw.",
   "type": "module",
   "license": "MIT",

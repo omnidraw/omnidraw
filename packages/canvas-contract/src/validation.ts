@@ -562,7 +562,7 @@ function validateEndpoint(value: unknown, path: string, issues: Issues): void {
     const object = record(value, path, issues, ["type", "point"]);
     if (object) validateVec2(object.point, child(path, "point"), issues);
   } else if (value.type === "node") {
-    const object = record(value, path, issues, ["type", "nodeId", "anchor", "offset", "gap"]);
+    const object = record(value, path, issues, ["type", "nodeId", "anchor", "attachment", "offset", "gap"]);
     if (object) {
       stringValue(object.nodeId, child(path, "nodeId"), issues, { nonEmpty: true });
       if (typeof object.anchor === "string") {
@@ -573,12 +573,62 @@ function validateEndpoint(value: unknown, path: string, issues: Issues): void {
         const anchor = record(object.anchor, child(path, "anchor"), issues, ["name"]);
         if (anchor) stringValue(anchor.name, child(child(path, "anchor"), "name"), issues, { nonEmpty: true });
       }
+      optional(object, "attachment", path, issues, (entry, entryPath, list) => {
+        const attachment = record(entry, entryPath, list, ["mode", "fixedPoint"]);
+        if (attachment === null) return;
+        enumValue(attachment.mode, child(entryPath, "mode"), list, ["inside", "orbit"]);
+        const fixedPoint = record(
+          attachment.fixedPoint,
+          child(entryPath, "fixedPoint"),
+          list,
+          ["x", "y"],
+        );
+        if (fixedPoint !== null) {
+          numberValue(fixedPoint.x, child(child(entryPath, "fixedPoint"), "x"), list, { min: 0, max: 1 });
+          numberValue(fixedPoint.y, child(child(entryPath, "fixedPoint"), "y"), list, { min: 0, max: 1 });
+        }
+        if (object.anchor !== "auto") {
+          add(
+            list,
+            "CONNECTOR_ATTACHMENT_REQUIRES_AUTO_ANCHOR",
+            child(path, "anchor"),
+            "Target-relative connector attachments require the auto anchor.",
+          );
+        }
+      });
       optional(object, "offset", path, issues, validateVec2);
       optional(object, "gap", path, issues, (entry, entryPath, list) => numberValue(entry, entryPath, list, { min: 0 }));
     }
   } else {
     add(issues, "INVALID_CONNECTOR_ENDPOINT", child(path, "type"), "Unsupported connector endpoint type.");
   }
+}
+
+function validateFixedSegment(value: unknown, path: string, issues: Issues): string | null {
+  const object = record(value, path, issues, ["id", "start", "end"]);
+  if (object === null) return null;
+  const id = stringValue(object.id, child(path, "id"), issues, { nonEmpty: true, max: 200 })
+    ? object.id
+    : null;
+  validateVec2(object.start, child(path, "start"), issues);
+  validateVec2(object.end, child(path, "end"), issues);
+  if (isPlainRecord(object.start) && isPlainRecord(object.end)) {
+    const { x: startX, y: startY } = object.start;
+    const { x: endX, y: endY } = object.end;
+    if (
+      typeof startX === "number" && Number.isFinite(startX)
+      && typeof startY === "number" && Number.isFinite(startY)
+      && typeof endX === "number" && Number.isFinite(endX)
+      && typeof endY === "number" && Number.isFinite(endY)
+    ) {
+      if (startX === endX && startY === endY) {
+        add(issues, "ZERO_LENGTH_CONNECTOR_FIXED_SEGMENT", path, "Connector fixed segments must have non-zero length.");
+      } else if (startX !== endX && startY !== endY) {
+        add(issues, "DIAGONAL_CONNECTOR_FIXED_SEGMENT", path, "Connector fixed segments must be horizontal or vertical.");
+      }
+    }
+  }
+  return id;
 }
 
 function validateRouting(value: unknown, path: string, issues: Issues): void {
@@ -752,7 +802,7 @@ function validateNode(value: unknown, path: string, issues: Issues): value is TC
     polygon: ["points", "closed", "fill", "stroke", "fillRule"],
     path: ["path", "fill", "stroke"],
     image: ["resourceId", "size", "fit", "position", "smoothing", "crop", "tint"],
-    connector: ["from", "to", "routing", "waypoints", "stroke", "startMarker", "endMarker", "avoidNodeIds", "labelNodeId"],
+    connector: ["from", "to", "routing", "waypoints", "fixedSegments", "stroke", "startMarker", "endMarker", "avoidNodeIds", "labelNodeId"],
     "widget-frame": ["size", "title", "titleBarColor", "headerItems", "collapsed", "resizable", "minSize", "maxSize"],
     text: ["runs", "style", "layout", "align", "verticalAlign", "direction", "wrap", "selectable"],
   };
@@ -805,6 +855,39 @@ function validateNode(value: unknown, path: string, issues: Issues): value is TC
       validateEndpoint(object.to, child(path, "to"), issues);
       validateRouting(object.routing, child(path, "routing"), issues);
       optional(object, "waypoints", path, issues, (entry, entryPath, list) => arrayValue(entry, entryPath, list, validateVec2));
+      optional(object, "fixedSegments", path, issues, (entry, entryPath, list) => {
+        const ids = new Set<string>();
+        arrayValue(entry, entryPath, list, (segment, segmentPath, segmentIssues) => {
+          const id = validateFixedSegment(segment, segmentPath, segmentIssues);
+          if (id === null) return;
+          if (ids.has(id)) {
+            add(
+              segmentIssues,
+              "DUPLICATE_CONNECTOR_FIXED_SEGMENT_ID",
+              child(segmentPath, "id"),
+              `Connector fixed segment ID '${id}' is duplicated.`,
+            );
+          } else {
+            ids.add(id);
+          }
+        });
+        if (!isPlainRecord(object.routing) || object.routing.type !== "orthogonal") {
+          add(
+            list,
+            "CONNECTOR_FIXED_SEGMENTS_REQUIRE_ORTHOGONAL_ROUTING",
+            entryPath,
+            "Connector fixed segments require orthogonal routing.",
+          );
+        }
+        if (has(object, "waypoints")) {
+          add(
+            list,
+            "CONNECTOR_FIXED_SEGMENTS_WITH_WAYPOINTS",
+            entryPath,
+            "Connector fixed segments cannot coexist with waypoints.",
+          );
+        }
+      });
       validateStroke(object.stroke, child(path, "stroke"), issues);
       optional(object, "startMarker", path, issues, validateMarker);
       optional(object, "endMarker", path, issues, validateMarker);
@@ -1005,8 +1088,10 @@ function validateNodeArray(value: unknown, path: string, issues: Issues): value 
     const references: Array<[string, string]> = [];
     if (node.clip?.type === "node") references.push([node.clip.nodeId, "clip/nodeId"]);
     if (node.kind === "connector") {
-      if (node.from.type === "node") references.push([node.from.nodeId, "from/nodeId"]);
-      if (node.to.type === "node") references.push([node.to.nodeId, "to/nodeId"]);
+      // Connected targets may disappear independently. Cangine preserves the
+      // authored endpoint intent and resolves deterministic fallback geometry;
+      // the authority still validates target existence when a connector
+      // mutation first authors or rebinds the reference.
       for (let refIndex = 0; refIndex < (node.avoidNodeIds?.length ?? 0); refIndex += 1) references.push([node.avoidNodeIds![refIndex]!, `avoidNodeIds/${refIndex}`]);
       if (node.labelNodeId !== undefined) references.push([node.labelNodeId, "labelNodeId"]);
     }

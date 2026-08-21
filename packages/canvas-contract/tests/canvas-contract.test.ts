@@ -144,6 +144,111 @@ describe("authored Canvas document", () => {
       .toBe(false);
   });
 
+  test("preserves legacy endpoints and validates target-relative attachments", () => {
+    const authored = CANVAS_CONFORMANCE_AUTHORED_NODES.find(
+      (node) => node.kind === "connector",
+    )!;
+    expect(authored.kind).toBe("connector");
+    if (authored.kind !== "connector") throw new Error("Missing connector fixture.");
+    const { fixedSegments: _fixedSegments, ...legacyBase } = authored;
+
+    const legacy: TCanvasSceneNode = {
+      ...legacyBase,
+      from: { type: "point", point: { x: 10, y: 20 } },
+      to: {
+        type: "node",
+        nodeId: "ellipse-a",
+        anchor: { name: "input" },
+        offset: { x: 2, y: -3 },
+        gap: 4,
+      },
+      routing: { type: "straight" },
+    };
+    expect(fnValidateCanvasSceneNode(legacy)).toEqual({ valid: true, issues: [] });
+    expect(CanvasSceneNodeCodec.parse(CanvasSceneNodeCodec.stringify(authored)))
+      .toEqual(authored);
+  });
+
+  test("rejects malformed attachments and illegal fixed segments", () => {
+    const authored = CANVAS_CONFORMANCE_AUTHORED_NODES.find(
+      (node) => node.kind === "connector",
+    )!;
+    if (authored.kind !== "connector") throw new Error("Missing connector fixture.");
+    const cases: readonly [string, TCanvasSceneNode, string][] = [
+      [
+        "unknown attachment field",
+        {
+          ...authored,
+          from: {
+            ...authored.from,
+            candidateOutline: true,
+          } as unknown as typeof authored.from,
+        },
+        "UNEXPECTED_FIELD",
+      ],
+      [
+        "malformed attachment mode",
+        {
+          ...authored,
+          from: {
+            type: "node",
+            nodeId: "rect-a",
+            anchor: "auto",
+            attachment: { mode: "edge", fixedPoint: { x: 0.5, y: 0.5 } },
+          } as unknown as typeof authored.from,
+        },
+        "INVALID_ENUM_VALUE",
+      ],
+      [
+        "negative normalized coordinate",
+        {
+          ...authored,
+          from: {
+            type: "node",
+            nodeId: "rect-a",
+            anchor: "auto",
+            attachment: { mode: "inside", fixedPoint: { x: -0.01, y: 0.5 } },
+          },
+        },
+        "NUMBER_TOO_SMALL",
+      ],
+      [
+        "zero length fixed segment",
+        {
+          ...authored,
+          fixedSegments: [{ id: "zero", start: { x: 1, y: 2 }, end: { x: 1, y: 2 } }],
+        },
+        "ZERO_LENGTH_CONNECTOR_FIXED_SEGMENT",
+      ],
+      [
+        "duplicate fixed segment IDs",
+        {
+          ...authored,
+          fixedSegments: [
+            { id: "same", start: { x: 0, y: 0 }, end: { x: 1, y: 0 } },
+            { id: "same", start: { x: 1, y: 0 }, end: { x: 1, y: 1 } },
+          ],
+        },
+        "DUPLICATE_CONNECTOR_FIXED_SEGMENT_ID",
+      ],
+      [
+        "fixed segments on straight routing",
+        { ...authored, routing: { type: "straight" } },
+        "CONNECTOR_FIXED_SEGMENTS_REQUIRE_ORTHOGONAL_ROUTING",
+      ],
+      [
+        "fixed segments mixed with waypoints",
+        { ...authored, waypoints: [{ x: 2, y: 4 }] },
+        "CONNECTOR_FIXED_SEGMENTS_WITH_WAYPOINTS",
+      ],
+    ];
+
+    for (const [name, node, code] of cases) {
+      expect(fnValidateCanvasSceneNode(node).issues, name)
+        .toContainEqual(expect.objectContaining({ code }));
+    }
+  });
+
   test("rejects duplicate IDs, missing parents, cycles, and missing references", () => {
     expect(fnValidateCanvasItems([rect("same"), rect("same")]).issues)
       .toContainEqual(expect.objectContaining({ code: "DUPLICATE_ITEM_ID" }));
@@ -155,6 +260,19 @@ describe("authored Canvas document", () => {
       ...rect("clipped"),
       clip: { type: "node", nodeId: "missing" },
     }]).issues).toContainEqual(expect.objectContaining({ code: "NODE_REFERENCE_NOT_FOUND" }));
+  });
+
+  test("preserves unresolved connector endpoints after a target disappears", () => {
+    const connector = CANVAS_CONFORMANCE_AUTHORED_NODES.find(
+      (node) => node.kind === "connector",
+    )!;
+    if (connector.kind !== "connector") throw new Error("Missing connector fixture.");
+    const {
+      avoidNodeIds: _avoidNodeIds,
+      labelNodeId: _labelNodeId,
+      ...unresolved
+    } = connector;
+    expect(fnValidateCanvasItems([unresolved])).toEqual({ valid: true, issues: [] });
   });
 
   test("rejects legacy widget bindings instead of normalizing them", () => {

@@ -30,7 +30,7 @@
     "test:typecheck": "bun run --parallel --filter '@omnidraw/backend' --filter '@omnidraw/frontend' --filter '@omnidraw/canvas-contract' --filter '@omnidraw/canvas' --filter '@omnidraw/sdk' --filter '@omnidraw/component-ai-chat' --filter '@omnidraw/theme' typecheck",
     "test:workspace": "bun run --sequential --filter '@omnidraw/backend' --filter '@omnidraw/frontend' --filter '@omnidraw/canvas-contract' --filter '@omnidraw/canvas' --filter '@omnidraw/sdk' --filter '@omnidraw/component-ai-chat' --filter '@omnidraw/theme' test",
     "pretest:architecture": "bun run build:public",
-    "test:architecture": "bun test --isolate scripts/public-packages.test.ts scripts/architecture-boundaries.test.ts scripts/source-release-policy.test.ts scripts/prepare-package-dist.test.ts scripts/verify-package-dists.test.ts scripts/list-package-deployments.test.ts scripts/local-registry.test.mjs scripts/link-local-packages.test.mjs scripts/published-lockfile.test.ts scripts/install-git-hooks.test.mjs",
+    "test:architecture": "bun test --isolate scripts/public-packages.test.ts scripts/architecture-boundaries.test.ts scripts/cangine-qualification.test.ts scripts/source-release-policy.test.ts scripts/prepare-package-dist.test.ts scripts/verify-package-dists.test.ts scripts/list-package-deployments.test.ts scripts/local-registry.test.mjs scripts/link-local-packages.test.mjs scripts/published-lockfile.test.ts scripts/install-git-hooks.test.mjs",
     "prepare": "node scripts/install-git-hooks.mjs",
     "check:published-lockfile": "bun run scripts/check-published-lockfile.ts",
     "test:source-release": "bun run scripts/test-source-release.ts",
@@ -81,7 +81,7 @@
   "license": "MIT",
   "devDependencies": {
     "@changesets/cli": "^2.31.1",
-    "@omnidraw/cangine": "0.6.1",
+    "@omnidraw/cangine": "0.7.0",
     "bun-types": "1.4.0",
     "effect": "catalog:",
     "playwright": "catalog:",

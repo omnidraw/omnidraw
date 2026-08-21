@@ -263,6 +263,21 @@ function connectorSegmentMode(
   }
 }
 
+function reconcileEditorSelectionWithScene(
+  engine: IInfiniteCanvasEngine,
+  editor: IStandardCanvasEditor,
+): void {
+  const selected = editor.state.selectedNodeIds;
+  const retained = selected.filter((nodeId) => engine.scene.has(nodeId));
+  if (retained.length === selected.length) return;
+  const focused = editor.state.focusedNodeId;
+  editor.setSelection(retained, {
+    focusedNodeId: focused !== null && retained.includes(focused)
+      ? focused
+      : retained[0] ?? null,
+  });
+}
+
 function normalizedKeyIdentity(
   key: string,
   code: string,
@@ -1248,6 +1263,17 @@ export function buildRuntime(
         if (extensionBridge === bridge) extensionBridge = null;
         await bridge.dispose();
       });
+      // Register before the standard session attaches. Connector/path
+      // controllers temporarily suppress the generic transform overlay; when
+      // a selected path is removed they may release that lease during the
+      // scene publication. Reconcile missing IDs first so restoring the
+      // overlay never targets a node that has already left the scene.
+      yield* lifetime.acquireSync(
+        () => canvasEngine.scene.subscribe(() => {
+          reconcileEditorSelectionWithScene(canvasEngine, session.editor);
+        }),
+        (release) => release(),
+      );
       // Subscribes before `attach()` so this listener runs first in
       // registration order and can short-circuit the editor/standard-tools
       // path (which only subscribes once the session attaches below).

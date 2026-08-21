@@ -145,6 +145,111 @@ async function runComposition(
       return current.revision === 3 && current.observedEvents >= 2
     })
 
+    const secondStart = {
+      x: hostBox.x + hostBox.width * 0.25,
+      y: hostBox.y + hostBox.height * 0.32,
+    }
+    const secondEnd = { x: secondStart.x + 120, y: secondStart.y + 80 }
+    const secondCenter = {
+      x: (secondStart.x + secondEnd.x) / 2,
+      y: (secondStart.y + secondEnd.y) / 2,
+    }
+    const movedFirstCenter = { x: center.x + 72, y: center.y + 36 }
+    await page.getByRole('button', { name: 'Rectangle', exact: true }).click()
+    await page.mouse.move(secondStart.x, secondStart.y)
+    await page.mouse.down()
+    await page.mouse.move(secondEnd.x, secondEnd.y, { steps: 6 })
+    await page.mouse.up()
+    await page.waitForFunction(() => window.canvasKernelSmoke.status().executedCommands >= 3)
+    const twoTargetSnapshot = await snapshot(page)
+    const second = twoTargetSnapshot.items.find((item) => (
+      item.id !== 'initial-shape' && item.id !== created.id
+    ))
+    assert(second?.item.kind === 'rect', `${adapter} Canvas/editor did not create the second Arrow target.`)
+
+    await page.getByRole('button', { name: 'Arrow', exact: true }).click()
+    await page.mouse.move(secondCenter.x, secondCenter.y)
+    await page.mouse.down()
+    await page.mouse.move(movedFirstCenter.x, movedFirstCenter.y, { steps: 8 })
+    await page.mouse.up()
+    await page.waitForFunction(() => window.canvasKernelSmoke.status().executedCommands >= 4)
+    const arrowSnapshot = await snapshot(page)
+    const arrow = arrowSnapshot.items.find((item) => item.item.kind === 'connector')
+    assert(arrow?.item.kind === 'connector', `${adapter} Canvas/editor did not create an Arrow connector.`)
+    assert(arrow.item.from.type === 'node', `${adapter} Arrow tail did not bind to its source target.`)
+    assert(arrow.item.from.nodeId === second.id, `${adapter} Arrow tail bound to the wrong source target.`)
+    assert(arrow.item.from.anchor === 'auto', `${adapter} Arrow tail did not use the auto attachment anchor.`)
+    assert(arrow.item.from.attachment?.mode === 'inside', `${adapter} Arrow tail did not preserve its inside attachment.`)
+    assert(arrow.item.to.type === 'node', `${adapter} Arrow head did not bind to its destination target.`)
+    assert(arrow.item.to.nodeId === created.id, `${adapter} Arrow head bound to the wrong destination target.`)
+    assert(arrow.item.to.anchor === 'auto', `${adapter} Arrow head did not use the auto attachment anchor.`)
+    assert(arrow.item.to.attachment?.mode === 'inside', `${adapter} Arrow head did not preserve its inside attachment.`)
+    assert(arrow.item.endMarker?.shape === 'arrow', `${adapter} Arrow lost its independent head marker.`)
+
+    await page.waitForTimeout(200)
+    await page.getByRole('button', { name: 'Select', exact: true }).click()
+    const detachedTail = {
+      x: hostBox.x + hostBox.width * 0.18,
+      y: hostBox.y + hostBox.height * 0.75,
+    }
+    await page.keyboard.down('Control')
+    await page.mouse.move(secondCenter.x, secondCenter.y)
+    await page.mouse.down()
+    await page.mouse.move(detachedTail.x, detachedTail.y, { steps: 6 })
+    await page.mouse.up()
+    await page.keyboard.up('Control')
+    await page.waitForFunction(() => window.canvasKernelSmoke.status().executedCommands >= 5)
+    const detachedSnapshot = await snapshot(page)
+    const detachedArrow = detachedSnapshot.items.find((item) => item.id === arrow.id)
+    assert(detachedArrow?.item.kind === 'connector', `${adapter} tail detach lost the Arrow.`)
+    assert(detachedArrow.item.from.type === 'point', `${adapter} Ctrl-drag did not detach the Arrow tail.`)
+    assert(detachedArrow.item.to.type === 'node', `${adapter} tail detach also changed the Arrow head.`)
+
+    await page.waitForTimeout(200)
+    await page.keyboard.down('Alt')
+    await page.mouse.move(movedFirstCenter.x, movedFirstCenter.y)
+    await page.mouse.down()
+    await page.mouse.move(secondCenter.x, secondCenter.y, { steps: 6 })
+    await page.mouse.up()
+    await page.keyboard.up('Alt')
+    await page.waitForFunction(() => window.canvasKernelSmoke.status().executedCommands >= 6)
+    const reboundSnapshot = await snapshot(page)
+    const reboundArrow = reboundSnapshot.items.find((item) => item.id === arrow.id)
+    assert(reboundArrow?.item.kind === 'connector', `${adapter} head rebind lost the Arrow.`)
+    assert(reboundArrow.item.from.type === 'point', `${adapter} head rebind changed the detached tail.`)
+    assert(
+      reboundArrow.item.to.type === 'node'
+      && reboundArrow.item.to.nodeId === second.id
+      && reboundArrow.item.to.attachment?.mode === 'inside',
+      `${adapter} Alt-drag did not rebind the Arrow head as an inside attachment.`,
+    )
+    assert(reboundArrow.item.endMarker?.shape === 'arrow', `${adapter} endpoint edits changed Arrow marker styling.`)
+
+    const secondMoveHandle = { x: secondCenter.x - 34, y: secondCenter.y - 20 }
+    await page.mouse.click(secondMoveHandle.x, secondMoveHandle.y)
+    await page.mouse.move(secondMoveHandle.x, secondMoveHandle.y)
+    await page.mouse.down()
+    await page.mouse.move(secondMoveHandle.x + 48, secondMoveHandle.y + 24, { steps: 6 })
+    await page.mouse.up()
+    await page.waitForFunction(() => window.canvasKernelSmoke.status().executedCommands >= 7)
+    const movedTargetSnapshot = await snapshot(page)
+    const movedArrow = movedTargetSnapshot.items.find((item) => item.id === arrow.id)
+    const movedSecond = movedTargetSnapshot.items.find((item) => item.id === second.id)
+    assert(movedSecond?.item.kind === 'rect', `${adapter} target movement lost the source target.`)
+    assert(
+      movedSecond.item.transform.position.x !== second.item.transform.position.x
+      || movedSecond.item.transform.position.y !== second.item.transform.position.y,
+      `${adapter} target movement did not change the authored target transform.`,
+    )
+    assert(movedArrow?.item.kind === 'connector', `${adapter} target movement lost the Arrow.`)
+    assert(
+      movedArrow.item.from.type === 'point'
+      && movedArrow.item.to.type === 'node'
+      && movedArrow.item.to.nodeId === second.id
+      && movedArrow.item.to.attachment?.mode === 'inside',
+      `${adapter} target movement changed the independently edited Arrow endpoints.`,
+    )
+
     const beforeTheme = await page.locator('.omnidraw-canvas-host').getAttribute('data-omnidraw-theme-id')
     await page.evaluate(() => window.canvasKernelSmoke.switchTheme())
     await page.waitForFunction((previous) => (
@@ -166,7 +271,7 @@ async function runComposition(
     }
 
     const afterEdit = await status(page)
-    assert(afterEdit.executedCommands === 2, `${adapter} did not execute create and edit commands.`)
+    assert(afterEdit.executedCommands === 7, `${adapter} did not execute the complete target and Arrow interaction sequence.`)
     assert(afterEdit.browserErrors.length === 0, `${adapter} reported host notification errors.`)
     if (adapter === 'cell' && contribution === 'host') {
       assert(afterEdit.diagnosticsEvents > 1, 'Injected diagnostics did not observe canvas activity.')

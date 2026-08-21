@@ -253,6 +253,11 @@ export type TConnectorEndpoint =
       type: "node";
       nodeId: TCanvasItemId;
       anchor: TNamedAnchor | { name: string };
+      /** Stable target-local normalized attachment point. */
+      attachment?: {
+        mode: "inside" | "orbit";
+        fixedPoint: TVec2;
+      };
       offset?: TVec2;
       gap?: number;
     };
@@ -275,12 +280,20 @@ export interface TConnectorMarker {
   filled?: boolean;
 }
 
+export interface TConnectorFixedSegment {
+  id: string;
+  start: TVec2;
+  end: TVec2;
+}
+
 export interface TConnectorNode extends TCanvasNodeBase {
   kind: "connector";
   from: TConnectorEndpoint;
   to: TConnectorEndpoint;
   routing: TConnectorRouting;
   waypoints?: TVec2[];
+  /** Connector-local axis-aligned segments pinned by elbow editing. */
+  fixedSegments?: TConnectorFixedSegment[];
   stroke: TStrokeStyle;
   startMarker?: TConnectorMarker;
   endMarker?: TConnectorMarker;

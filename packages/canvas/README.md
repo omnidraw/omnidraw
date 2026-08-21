@@ -44,7 +44,7 @@ Semantic authored paint is stored with a concrete old-client fallback. The
 runtime keeps that authored node image separate from its theme-projected
 Cangine node, so a viewer theme switch changes only the projected scene
 revision and never the durable canvas revision. Literal paint remains stable.
-Cangine 0.6.1 receives only resolved concrete values. Mounted selection and
+Cangine 0.7.0 receives only resolved concrete values. Mounted selection and
 path affordances update through its live appearance setters. Standard creation
 uses its guarded all-tool decorator, while compact-picker edits pass semantic
 intent to its extension-only selection mutation decorator. Cangine still plans
@@ -53,7 +53,7 @@ the compatible targets and sends one finalized batch unchanged to
 
 The `0.11.0` line uses `@omnidraw/canvas-contract@0.7.0`, the public
 `@omnidraw/theme`, exact `effect@4.0.0-rc.108` internally, and exact
-`@omnidraw/cangine@0.6.1`. The host provides one exact
+`@omnidraw/cangine@0.7.0`. The host provides one exact
 `solid-js@2.0.0-rc.0` and `@solidjs/web@2.0.0-rc.0` pair; neither Effect nor
 Cangine appears in Canvas public types.
 

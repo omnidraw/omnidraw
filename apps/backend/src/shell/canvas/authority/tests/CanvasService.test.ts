@@ -3,6 +3,7 @@ import {
   CANVAS_SCENE_SCHEMA_VERSION,
   fnReadCanvasImageExtension,
   fnReadCanvasWidgetExtension,
+  fnValidateCanvasItems,
 } from '@omnidraw/canvas-contract';
 import type {
   TCanvasCommand,
@@ -56,6 +57,25 @@ function connector(id: string, fromId: string, toId: string): TSceneNode {
         color: { space: 'srgb', r: 0, g: 0, b: 0, a: 1 },
       },
     },
+  };
+}
+
+function attachedConnector(id: string, fromId: string, toId: string): TSceneNode {
+  return {
+    ...connector(id, fromId, toId),
+    from: {
+      type: 'node', nodeId: fromId, anchor: 'auto',
+      attachment: { mode: 'inside', fixedPoint: { x: 0.75, y: 0.5 } },
+    },
+    to: {
+      type: 'node', nodeId: toId, anchor: 'auto',
+      attachment: { mode: 'orbit', fixedPoint: { x: 0, y: 0.5 } },
+    },
+    routing: { type: 'orthogonal', cornerRadius: 8 },
+    fixedSegments: [{
+      id: 'middle-leg', start: { x: 40, y: 30 }, end: { x: 120, y: 30 },
+    }],
+    endMarker: { shape: 'arrow', size: 12, filled: true },
   };
 }
 
@@ -338,6 +358,47 @@ describe('CanvasService', () => {
       from: { type: 'node', nodeId: 'shape-a' },
       to: { type: 'node', nodeId: 'shape-b' },
     });
+  });
+
+  test('persists target-relative endpoints and retains deterministic dangling intent after deletion', async () => {
+    const store = new MemoryCanvasStore();
+    store.createCanvas('canvas-a', [rect('shape-a'), rect('shape-b')]);
+    const canvas = service(store);
+    const authored = attachedConnector('arrow-a', 'shape-a', 'shape-b');
+
+    const inserted = await canvas.execute(insertCommand(
+      'insert-arrow',
+      'canvas-a',
+      0,
+      authored,
+    ));
+    expect(inserted.changedItems[0]?.item).toEqual(authored);
+
+    const deletion = await canvas.execute({
+      commandId: 'delete-target',
+      canvasId: 'canvas-a',
+      baseRevision: 1,
+      operations: [{ type: 'delete', itemId: 'shape-a' }],
+      preconditions: [{ type: 'item-revision', itemId: 'shape-a', itemRevision: 1 }],
+    });
+    expect(deletion.deletedItemIds).toEqual(['shape-a']);
+
+    const reloaded = await canvas.getSnapshot({ canvasId: 'canvas-a' });
+    const retained = reloaded.items.find((entry) => entry.id === 'arrow-a')?.item;
+    expect(retained).toEqual(authored);
+    expect(fnValidateCanvasItems(reloaded.items.map((entry) => entry.item)))
+      .toEqual({ valid: true, issues: [] });
+
+    await expect(canvas.execute({
+      commandId: 'rebind-missing-target',
+      canvasId: 'canvas-a',
+      baseRevision: 2,
+      operations: [{
+        type: 'replace',
+        item: attachedConnector('arrow-a', 'missing-target', 'shape-b'),
+      }],
+      preconditions: [{ type: 'item-revision', itemId: 'arrow-a', itemRevision: 1 }],
+    })).rejects.toMatchObject({ code: 'INVALID_COMMAND' });
   });
 
   test('keeps widget identity stable and unique on one canvas', async () => {
