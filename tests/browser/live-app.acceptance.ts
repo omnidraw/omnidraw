@@ -2528,10 +2528,11 @@ async function runBrowserSuite(
       'The retired native socket delivered a real server frame after replacement opened.',
     );
 
-    const toleratedDisconnectErrors = browserErrors.filter((message) => !(
-      message.includes('/rpc') && message.includes('WebSocket')
+    const unexpectedBrowserErrors = browserErrors.filter((message) => !(
+      (message.includes('/rpc') && message.includes('WebSocket'))
+      || message.includes('SocketCloseError: 4001: browser-acceptance-reconnect')
     ));
-    assert.deepEqual(toleratedDisconnectErrors, [], browserErrors.join('\n'));
+    assert.deepEqual(unexpectedBrowserErrors, [], browserErrors.join('\n'));
     assert.deepEqual(badResponses, [], badResponses.join('\n'));
     console.log('[browser:live] 16 routes, streamed AI Chat/history, Preview function/resource bridge, Preview success/failure usability, durable preferences, restart recovery, and WebSocket fencing passed');
   } finally {
