@@ -15,7 +15,7 @@
     "predev": "bun run --cwd ../frontend build:inspection",
     "dev": "NODE_ENV=development bun run --watch ./src/main.ts",
     "benchmark:order-7": "bun run benchmarks/order-7.ts",
-    "test": "bun test",
+    "test": "bun test --parallel=2 --isolate",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit"
   },

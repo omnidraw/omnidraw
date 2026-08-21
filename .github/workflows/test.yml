@@ -28,13 +28,16 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.14"
+          bun-version: "1.4.0"
 
       - name: Check lockfile uses published npm
         run: bun run check:published-lockfile
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Check dependency deduplication
+        run: bun dedupe --check
 
       - name: Install Playwright Chromium
         run: bunx playwright@1.61.1 install --with-deps chromium

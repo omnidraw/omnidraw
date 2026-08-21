@@ -247,7 +247,7 @@ async function main(): Promise<void> {
       // just packed; no workspace link or source directory participates.
       overrides: dependencies,
       devDependencies: {
-        'bun-types': '1.3.14',
+        'bun-types': '1.4.0',
         typescript: '7.0.2',
       },
     }, null, 2)}\n`)

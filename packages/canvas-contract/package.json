@@ -54,11 +54,11 @@
     "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
     "prepack": "bun run build",
     "prepublishOnly": "bun run typecheck && bun run test && bun run build",
-    "test": "bun test",
+    "test": "bun test --isolate",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
-    "bun-types": "1.3.14",
+    "bun-types": "1.4.0",
     "typescript": "7.0.2"
   }
 }

@@ -90,7 +90,7 @@
     "build": "bun scripts/build.ts && bun run ../../scripts/prepare-package-dist.ts",
     "build:stage": "OMNIDRAW_PACKAGE_STAGE=1 bun scripts/build.ts && OMNIDRAW_PACKAGE_STAGE=1 bun run ../../scripts/prepare-package-dist.ts --package-root . --dist-root \"$OMNIDRAW_PACKAGE_DIST_ROOT\"",
     "prepublishOnly": "bun run typecheck && bun run test && bun run build",
-    "test": "bun test --pass-with-no-tests",
+    "test": "bun test --isolate --pass-with-no-tests",
     "typecheck": "tsc --noEmit -p tsconfig.type-tests.json"
   },
   "dependencies": {

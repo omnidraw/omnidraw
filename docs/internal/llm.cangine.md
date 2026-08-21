@@ -132,7 +132,7 @@ a render backend.
 
 The supported production path is:
 
-- standards-compliant ESM with TypeScript declarations for Bun `1.3.14+` and
+- standards-compliant ESM with TypeScript declarations for Bun `1.4.0+` and
   Node `20.19.0+`;
 - browser execution on Chromium, Firefox, and WebKit;
 - WebGL2 retained 2D rendering;

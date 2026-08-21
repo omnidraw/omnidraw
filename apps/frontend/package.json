@@ -10,7 +10,7 @@
     "dev:inspection:ready": "bun run scripts/build-inspection.ts --watch --reuse-current",
     "verify:inspection": "bun run scripts/verify-inspection-dist.ts",
     "preview": "vite preview",
-    "test:unit": "bun test src scripts && bun ./node_modules/vitest/vitest.mjs --run",
+    "test:unit": "bun test --isolate src scripts && bun ./node_modules/vitest/vitest.mjs --run",
     "test": "bun run typecheck && bun run test:unit && bun run build",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

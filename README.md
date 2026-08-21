@@ -23,7 +23,7 @@ packages/
 
 ## Quick Start
 
-OmniDraw is currently run from source. Install Bun `1.3.14`, then run:
+OmniDraw is currently run from source. Install Bun `1.4.0`, then run:
 
 ```bash
 git clone https://github.com/omnidraw/omnidraw.git

@@ -17,7 +17,7 @@ Capsule is one ESM package:
 bun add @omnidraw/capsule
 ```
 
-The tested package manager is Bun 1.3.14. Browser applications should use a
+The tested package manager is Bun 1.4.0. Browser applications should use a
 modern ESM-aware bundler. The `build` and `sign` entries are trusted
 Bun/Node tooling and must stay out of browser bundles.
 
