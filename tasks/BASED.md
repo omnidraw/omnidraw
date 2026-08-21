@@ -228,7 +228,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B114](b/B114.md) - AI-created first widget stays missing from sidebar until reload
 - [x]: [B115](b/B115.md) - ci: align SDK tests with the normalized 0.7.0 release marker
 - [x]: [B116](b/B116.md) - Widget lifecycle: distinguish runtime loading from Preview building
-- [~]: [B117](b/B117.md) - CI: AI Chat preference acceptance clicks a hidden composer after durable updates
+- [x]: [B117](b/B117.md) - CI: AI Chat preference acceptance clicks a hidden composer after durable updates
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
