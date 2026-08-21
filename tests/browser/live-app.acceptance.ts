@@ -47,6 +47,49 @@ type TTransportEvidence = Readonly<{
   rpcOpenCount: number;
 }>;
 
+type TWidgetRuntimeDiagnostics = Readonly<{
+  format: 'omnidraw.widget-runtime-diagnostics.v1';
+  scheduler: Readonly<{
+    concurrency: number;
+    active: number;
+    queued: number;
+    deferred: number;
+    peakActive: number;
+    started: number;
+    completed: number;
+    cancelled: number;
+    firstStartedAtMs: number | null;
+    lastStartedAtMs: number | null;
+    firstCompletedAtMs: number | null;
+    lastCompletedAtMs: number | null;
+    recentStarts: readonly string[];
+  }>;
+  browserHost: Readonly<{
+    liveHosts: number;
+    liveMounts: number;
+    hostCreations: number;
+    artifactCache: Readonly<{
+      entries: number;
+      totalBytes: number;
+      hits: number;
+      misses: number;
+      puts: number;
+      evictions: number;
+    }>;
+    pendingArtifactAdmissions: number;
+  }>;
+  mounts: readonly Readonly<{
+    nodeId: string;
+    instanceId: string;
+    artifactHash: string;
+    state: string;
+    generation: number;
+    viewport?: Readonly<{
+      visibility: string;
+    }>;
+  }>[];
+}>;
+
 type TRpcWireRequest = Readonly<{
   complete: boolean;
   connectionId: number;
@@ -1915,6 +1958,178 @@ async function placeProfilePreview(
   return Object.freeze({ identity: previewMountIdentity(open), nodeId: node.id });
 }
 
+async function readWidgetRuntimeDiagnostics(page: Page): Promise<TWidgetRuntimeDiagnostics | null> {
+  return page.evaluate(async () => {
+    const diagnostics = (window as unknown as {
+      __OMNIDRAW_WIDGET_RUNTIME_DIAGNOSTICS__?: () => Promise<TWidgetRuntimeDiagnostics>;
+    }).__OMNIDRAW_WIDGET_RUNTIME_DIAGNOSTICS__;
+    return diagnostics === undefined ? null : diagnostics();
+  });
+}
+
+async function panCanvasToDistantViewport(page: Page, reverse = false): Promise<void> {
+  const host = page.locator('.omnidraw-canvas-engine-host');
+  const bounds = await host.boundingBox();
+  assert.ok(bounds !== null, 'Canvas bounds are unavailable for the runtime scheduling pan.');
+  const near = { x: bounds.x + 24, y: bounds.y + bounds.height - 24 };
+  const far = { x: bounds.x + bounds.width - 24, y: near.y };
+  const start = reverse ? near : far;
+  const end = reverse ? far : near;
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  });
+  await page.keyboard.down('Space');
+  try {
+    for (let gesture = 0; gesture < 3; gesture += 1) {
+      await page.mouse.move(start.x, start.y);
+      await page.mouse.down();
+      await page.mouse.move(end.x, end.y, { steps: 12 });
+      await page.mouse.up();
+    }
+  } finally {
+    await page.keyboard.up('Space');
+  }
+}
+
+async function exerciseWidgetRuntimeScheduling(page: Page): Promise<void> {
+  await createCanvas(page, 'Runtime Scheduling Acceptance');
+  await page.locator('.omnidraw-canvas-host').waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  const fixture = Object.freeze({
+    name: 'Browser Acceptance Widget',
+    widgetKey: 'browser-acceptance',
+  });
+  const visible = [] as Array<Readonly<{ identity: unknown; nodeId: string }>>;
+  for (let index = 0; index < 4; index += 1) {
+    visible.push(await placeProfilePreview(page, fixture));
+  }
+  for (const candidate of visible.slice(1)) {
+    assert.deepEqual(
+      candidate.identity,
+      visible[0]!.identity,
+      'Repeated Preview placements did not resolve the same exact accepted artifact identity.',
+    );
+  }
+
+  const statefulPortal = page.locator(
+    `[data-vibecanvas-portal-id="omnidraw:widget:${visible[0]!.nodeId}"]`,
+  );
+  const beforeThrottle = await readWidgetRuntimeDiagnostics(page);
+  const statefulMount = beforeThrottle?.mounts.find((mount) => mount.nodeId === visible[0]!.nodeId);
+  assert.ok(statefulMount !== undefined, 'Repeated DOM widget has no live isolated mount.');
+  const opensBeforeThrottle = (await readRpcRequests(page, 'widget.preview.open')).length;
+
+  await panCanvasToDistantViewport(page);
+  await waitForBrowserState<TWidgetRuntimeDiagnostics | null>({
+    label: 'the original repeated widgets to leave the distant viewport',
+    read: () => readWidgetRuntimeDiagnostics(page),
+    ready: (evidence) => evidence !== null && visible.every(({ nodeId }) => (
+      evidence.mounts.find((mount) => mount.nodeId === nodeId)?.viewport?.visibility === 'hidden'
+    )),
+  });
+  await panCanvasToDistantViewport(page, true);
+  await statefulPortal.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  const afterThrottle = await waitForBrowserState<TWidgetRuntimeDiagnostics | null>({
+    label: 'the same guest instance after off-screen throttle/resume',
+    read: () => readWidgetRuntimeDiagnostics(page),
+    ready: (evidence) => evidence?.mounts.some((mount) => (
+      mount.nodeId === visible[0]!.nodeId
+      && mount.instanceId === statefulMount.instanceId
+      && mount.viewport?.visibility === 'visible'
+    )) === true,
+  });
+  assert.equal(afterThrottle?.browserHost.hostCreations, beforeThrottle?.browserHost.hostCreations);
+  assert.equal(
+    (await readRpcRequests(page, 'widget.preview.open')).length,
+    opensBeforeThrottle,
+    'Off-screen throttle/resume destroyed and reopened a mounted guest.',
+  );
+  await panCanvasToDistantViewport(page);
+  const offscreen = await placeProfilePreview(page, fixture);
+  assert.deepEqual(
+    offscreen.identity,
+    visible[0]!.identity,
+    'The distant repeated Preview did not resolve the same exact accepted artifact identity.',
+  );
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.locator('.omnidraw-canvas-host').waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  await waitForRpcConnection(page);
+  const visibleNodeIds = visible.map(({ nodeId }) => nodeId);
+  const cold = await waitForBrowserState<TWidgetRuntimeDiagnostics | null>({
+    label: 'visible repeated widgets to settle while the cold off-screen widget remains deferred',
+    read: () => readWidgetRuntimeDiagnostics(page),
+    ready: (evidence) => evidence !== null
+      && evidence.scheduler.active === 0
+      && evidence.scheduler.deferred >= 1
+      && visibleNodeIds.every((nodeId) => evidence.mounts.some((mount) => mount.nodeId === nodeId))
+      && !evidence.mounts.some((mount) => mount.nodeId === offscreen.nodeId),
+  });
+  assert.ok(cold !== null);
+  assert.ok(
+    cold.scheduler.started > cold.scheduler.concurrency,
+    'The cold visible population did not exceed the configured mount concurrency bound.',
+  );
+  assert.ok(
+    cold.scheduler.peakActive <= cold.scheduler.concurrency,
+    `Widget startup exceeded its bounded concurrency: ${JSON.stringify(cold.scheduler)}`,
+  );
+  assert.equal(
+    cold.scheduler.recentStarts.includes(offscreen.nodeId),
+    false,
+    'The cold off-screen widget started before it became viewport eligible.',
+  );
+  assert.equal(cold.browserHost.liveHosts, visible.length);
+  assert.equal(cold.browserHost.liveMounts, visible.length);
+  assert.ok(
+    cold.browserHost.hostCreations >= visible.length,
+    'The browser host created fewer isolated hosts than live widget mounts.',
+  );
+  assert.equal(cold.browserHost.artifactCache.entries, 1);
+  assert.equal(cold.browserHost.artifactCache.puts, 1);
+  assert.ok(
+    cold.browserHost.artifactCache.hits >= visible.length - 1,
+    `Repeated exact artifacts did not reuse immutable cache work: ${JSON.stringify(cold.browserHost.artifactCache)}`,
+  );
+
+  await panCanvasToDistantViewport(page);
+  const resumed = await waitForBrowserState<TWidgetRuntimeDiagnostics | null>({
+    label: 'the deferred widget to start after entering the viewport',
+    read: () => readWidgetRuntimeDiagnostics(page),
+    ready: (evidence) => evidence !== null
+      && evidence.scheduler.active === 0
+      && evidence.mounts.some((mount) => mount.nodeId === offscreen.nodeId),
+  });
+  assert.ok(resumed !== null);
+  assert.equal(resumed.browserHost.liveHosts, visible.length + 1);
+  assert.equal(resumed.browserHost.liveMounts, visible.length + 1);
+  assert.ok(
+    resumed.browserHost.hostCreations > cold.browserHost.hostCreations,
+    'Making the deferred widget eligible did not create its isolated Capsule host.',
+  );
+  assert.equal(resumed.browserHost.artifactCache.entries, 1);
+  assert.equal(resumed.browserHost.artifactCache.puts, 1);
+  assert.ok(
+    resumed.browserHost.artifactCache.hits > cold.browserHost.artifactCache.hits,
+    'The newly eligible repeated artifact did not reuse the shared immutable cache.',
+  );
+  const repeatedMounts = resumed.mounts.filter((mount) => (
+    [...visibleNodeIds, offscreen.nodeId].includes(mount.nodeId)
+  ));
+  assert.equal(repeatedMounts.length, visible.length + 1);
+  assert.equal(
+    new Set(repeatedMounts.map((mount) => mount.artifactHash)).size,
+    1,
+    'Repeated instances did not retain one exact artifact hash.',
+  );
+  assert.equal(
+    new Set(repeatedMounts.map((mount) => mount.instanceId)).size,
+    repeatedMounts.length,
+    'Shared artifact work accidentally shared a Capsule guest instance.',
+  );
+  await assertNoHandledErrorAlerts(page, 'visible-first widget scheduling and shared artifact caching');
+}
+
 async function placeFunctionResourcePreview(page: Page): Promise<void> {
   const expand = page.getByRole('button', { name: 'Expand acceptance widget group' });
   if (await expand.count()) await expand.click();
@@ -2487,6 +2702,10 @@ async function runBrowserSuite(
       'Cold accepted-Preview recovery invoked the explicit portable rebuild operation.',
     );
     await assertNoHandledErrorAlerts(page, 'backend restart recovery');
+
+    console.log('[browser:live] visible-first bounded startup and isolated shared-artifact reuse');
+    await exerciseWidgetRuntimeScheduling(page);
+
     await createCanvas(page, 'Preview Failure Follow-up');
     await page.locator('.omnidraw-canvas-host').waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
 
@@ -2534,7 +2753,7 @@ async function runBrowserSuite(
     ));
     assert.deepEqual(unexpectedBrowserErrors, [], browserErrors.join('\n'));
     assert.deepEqual(badResponses, [], badResponses.join('\n'));
-    console.log('[browser:live] 16 routes, streamed AI Chat/history, Preview function/resource bridge, Preview success/failure usability, durable preferences, restart recovery, and WebSocket fencing passed');
+    console.log('[browser:live] 16 routes, streamed AI Chat/history, Preview function/resource bridge, visible-first bounded runtime/cache isolation, Preview success/failure usability, durable preferences, restart recovery, and WebSocket fencing passed');
   } finally {
     await page.close();
     await browser.close();

@@ -129,22 +129,41 @@ export type TCanvasWidgetTitlebarModel = Readonly<{
   }>[];
 }>;
 
+export type TCanvasWidgetSchedulingState = Readonly<{
+  /** Whether cold work may enter the host's bounded mount queue. */
+  eligible: boolean;
+  /** Authoritative Cangine portal visibility, distinct from forced eligibility. */
+  visible: boolean;
+  /** Viewport distance in CSS pixels, clamped to the portable runtime bound. */
+  distance: number;
+  /** Host-owned startup priority: unavailable 0 through maximized 4. */
+  priority: 0 | 1 | 2 | 3 | 4;
+  /** Fraction outside the viewport, clamped to 0..1. */
+  occlusion: number;
+}>;
+
 export type TCanvasWidgetMountArgs = Readonly<{
   node: TWidgetFrameNode;
   container: HTMLElement;
   signal: AbortSignal;
+  scheduling: Readonly<{
+    current(): TCanvasWidgetSchedulingState;
+    subscribe(listener: (state: TCanvasWidgetSchedulingState) => void): () => void;
+  }>;
   setTitlebar?(model: TCanvasWidgetTitlebarModel): void;
   onNodeChange?(
     listener: (node: TWidgetFrameNode) => void,
   ): () => void;
 }>;
 
+export type TCanvasWidgetCleanup = () => void | Promise<void>;
+
 export type TCanvasWidgetHostRegistration = Readonly<{
   id: string;
   match(node: Readonly<TWidgetFrameNode>): boolean;
   mount(
     args: TCanvasWidgetMountArgs,
-  ): void | (() => void) | Promise<void | (() => void)>;
+  ): void | TCanvasWidgetCleanup | Promise<void | TCanvasWidgetCleanup>;
   onAction?(args: Readonly<{
     node: TWidgetFrameNode;
     actionId: string;

@@ -319,6 +319,22 @@ function fakeEngine(): Readonly<{
       query: (predicate: (node: TSceneNode) => boolean) => (
         sceneReductionStateSnapshot(sceneState).nodes.filter(predicate)
       ),
+      ancestorsOf: (nodeId: string, options?: { includeSelf?: boolean }) => {
+        const ancestors: TSceneNode[] = [];
+        let current = options?.includeSelf === true
+          ? sceneState.get(nodeId)
+          : (() => {
+              const node = sceneState.get(nodeId);
+              return node?.parentId === null || node === null
+                ? null
+                : sceneState.get(node.parentId);
+            })();
+        while (current !== null) {
+          ancestors.unshift(current);
+          current = current.parentId === null ? null : sceneState.get(current.parentId);
+        }
+        return ancestors;
+      },
       snapshot: () => sceneReductionStateSnapshot(sceneState),
       apply,
       replace,
@@ -326,6 +342,9 @@ function fakeEngine(): Readonly<{
         sceneListeners.add(listener);
         return () => { sceneListeners.delete(listener); };
       },
+    },
+    camera: {
+      viewportSize: { width: 800, height: 600 },
     },
     portals: {
       register: vi.fn((registration: TPortalRegistration) => {
@@ -342,6 +361,21 @@ function fakeEngine(): Readonly<{
           portalCleanup = null;
           void cleanup?.();
         };
+      }),
+      state: (portalId: string) => ({
+        portalId,
+        nodeId: portalId.replace('omnidraw:widget:', ''),
+        mounted: true,
+        visible: true,
+        geometry: {
+          nodeId: portalId.replace('omnidraw:widget:', ''),
+          viewportMatrix: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+          viewportBounds: { minX: 0, minY: 0, maxX: 360, maxY: 280 },
+          visibleWorldBounds: { minX: 0, minY: 0, maxX: 800, maxY: 600 },
+          clipped: false,
+          interactive: true,
+          devicePixelRatio: 1,
+        },
       }),
       subscribe(listener: () => void) {
         portalListeners.add(listener);
@@ -501,6 +535,11 @@ describe('CanvasDocumentService', () => {
       },
       document: service,
       editor: {
+        state: {
+          selectedNodeIds: [],
+          focusedNodeId: null,
+        },
+        subscribe: () => () => undefined,
         commitSceneMutation(request) {
           transaction += 1;
           service.commit(mutation(

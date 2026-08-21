@@ -41,6 +41,11 @@ import {
   fnWidgetPreviewPresentation,
 } from "@/core/widgets/fn.widget-preview-state";
 import { createWidgetFrameStatusSurface } from "./widget-frame-status-surface";
+import {
+  createWidgetMountScheduler,
+  type TWidgetMountAdmission,
+} from "./widget-mount-scheduler";
+import { createWidgetSchedulingModeSync } from "./widget-scheduling-mode-sync";
 
 type TCreateFrontendWidgetExtensionArgs = Readonly<{
   runtime: TFrontendRuntime;
@@ -217,6 +222,27 @@ export function createFrontendWidgetExtension(
         },
       });
       const mounts = new Map<string, IWidgetBrowserMount>();
+      const mountScheduler = createWidgetMountScheduler({ concurrency: 3 });
+      const diagnosticsOwner = application.ownerWindow as Window & typeof globalThis & {
+        __OMNIDRAW_WIDGET_RUNTIME_DIAGNOSTICS__?: () => unknown;
+      };
+      const previousRuntimeDiagnostics = diagnosticsOwner.__OMNIDRAW_WIDGET_RUNTIME_DIAGNOSTICS__;
+      const runtimeDiagnostics = async (): Promise<unknown> => Object.freeze({
+        format: "omnidraw.widget-runtime-diagnostics.v1",
+        scheduler: mountScheduler.diagnostics(),
+        browserHost: await runtime.diagnostics(),
+        mounts: Object.freeze([...mounts]
+          .sort(([left], [right]) => left.localeCompare(right))
+          .slice(0, 64)
+          .flatMap(([nodeId, mounted]) => {
+            try {
+              return [Object.freeze({ nodeId, ...mounted.diagnostics() })];
+            } catch {
+              return [];
+            }
+          })),
+      });
+      diagnosticsOwner.__OMNIDRAW_WIDGET_RUNTIME_DIAGNOSTICS__ = runtimeDiagnostics;
       const reloadByNode = new Map<string, TPreviewReload>();
       const previewWidgetKeyByNode = new Map<string, string>();
       const syncPreviewActionsByNode = new Map<string, () => Promise<void>>();
@@ -330,11 +356,33 @@ export function createFrontendWidgetExtension(
           let statusSurface: HTMLElement | null = null;
           let retryFrame = (_action: "reload" | "rebuild"): void => undefined;
           const ownerWindow = application.ownerWindow as Window & typeof globalThis;
+          let currentNode = args.node;
+          let scheduling = args.scheduling.current();
+          let mountAdmission: TWidgetMountAdmission | null = null;
           const viewportSync = createWidgetViewportSync({
             container: args.container,
             createResizeObserver: (callback) => new ownerWindow.ResizeObserver(callback),
             devicePixelRatio: () => ownerWindow.devicePixelRatio,
             node: args.node,
+            scheduling,
+          });
+          const schedulingModeSync = createWidgetSchedulingModeSync(
+            scheduling.visible ? "active" : "throttled",
+          );
+          const unsubscribeNode = args.onNodeChange?.((node) => {
+            currentNode = node;
+            viewportSync.updateNode(node);
+            mountAdmission?.updateNode(node);
+            const next = fnReadCanvasWidgetExtension(node);
+            if (next?.uiProps !== undefined && typeof next.uiProps === "object" && next.uiProps !== null && !Array.isArray(next.uiProps)) {
+              mount?.setProps(next.uiProps);
+            }
+          });
+          const unsubscribeScheduling = args.scheduling.subscribe((next) => {
+            scheduling = next;
+            viewportSync.updateScheduling(next);
+            mountAdmission?.updateScheduling(next);
+            schedulingModeSync.update(next.visible ? "active" : "throttled");
           });
           const removeFrame = (): void => {
             context.document.commit({
@@ -403,9 +451,10 @@ export function createFrontendWidgetExtension(
               });
             }
           };
-          const openOnce = async (
+          const openOnceUnscheduled = async (
             forceBuild: boolean,
             allowBuildFallback: boolean,
+            startupSignal: AbortSignal,
           ): Promise<boolean> => {
             const previous = mount;
             const requestId = ++requestSequence;
@@ -418,7 +467,7 @@ export function createFrontendWidgetExtension(
             const pollController = new AbortController();
             const pollBuildState = async (): Promise<void> => {
               if (extension.type !== "widget-preview") return;
-              while (!pollController.signal.aborted && !args.signal.aborted) {
+              while (!pollController.signal.aborted && !startupSignal.aborted) {
                 const buildState = await runtime.buildState(
                   exactSubject.widgetKey,
                   pollController.signal,
@@ -473,7 +522,10 @@ export function createFrontendWidgetExtension(
             const retireFatalMount = async (failedMount: IWidgetBrowserMount, error: unknown): Promise<void> => {
               await retireFatalWidgetMount({
                 canRenderFailure: () => mount === undefined && !args.signal.aborted,
-                detach: (failed) => viewportSync.detach(failed),
+                detach: (failed) => {
+                  viewportSync.detach(failed);
+                  schedulingModeSync.detach(failed);
+                },
                 error,
                 failedMount,
                 isCurrent: () => mount === failedMount,
@@ -491,7 +543,7 @@ export function createFrontendWidgetExtension(
               if (forceBuild && extension.type === "widget-preview") {
                 const rebuild = application.rpc.request("widget.preview.rebuildDraft", {
                   widgetKey: extension.widgetKey,
-                }, { signal: args.signal });
+                }, { signal: startupSignal });
                 startBuildStatePolling();
                 await rebuild;
                 transitionFrame({ type: "build-accepted", requestId });
@@ -504,7 +556,7 @@ export function createFrontendWidgetExtension(
                 viewport: initialViewport,
                 theme: fnWidgetHostTheme(application.theme.service.getTheme()),
                 props: extension.uiProps,
-                signal: args.signal,
+                signal: startupSignal,
                 onDiagnostic: (diagnostic) => {
                   retainGuestDiagnostic(diagnostic);
                   if (diagnostic.fatal) showErrorToast(
@@ -538,17 +590,21 @@ export function createFrontendWidgetExtension(
                 transitionFrame({ type: "build-phase", requestId, phase: "build_required" });
                 const rebuild = application.rpc.request("widget.preview.rebuildDraft", {
                   widgetKey: extension.widgetKey,
-                }, { signal: args.signal });
+                }, { signal: startupSignal });
                 await rebuild;
                 transitionFrame({ type: "build-accepted", requestId });
                 options.invalidateWidgets();
                 next = await mountCandidate();
               }
               await next.ready();
+              if (startupSignal.aborted) {
+                throw startupSignal.reason ?? new DOMException("Widget startup was cancelled.", "AbortError");
+              }
               if (fatalError !== undefined) throw fatalError;
             } catch (error) {
               nextDiagnostic.surface?.remove();
               await next?.dispose("replacement-failed").catch(() => undefined);
+              if (startupSignal.aborted) return false;
               renderFailure(error, requestId);
               return false;
             } finally {
@@ -558,6 +614,7 @@ export function createFrontendWidgetExtension(
             diagnosticSurface = nextDiagnostic.surface;
             mount = next;
             viewportSync.attach(next, initialViewport);
+            schedulingModeSync.attach(next);
             mounts.set(args.node.id, next);
             committed = true;
             if (diagnosticSurface !== null && !diagnosticSurface.isConnected) {
@@ -574,6 +631,40 @@ export function createFrontendWidgetExtension(
               return false;
             }
             return true;
+          };
+          const openOnce = async (
+            forceBuild: boolean,
+            allowBuildFallback: boolean,
+          ): Promise<boolean> => {
+            let opened = false;
+            const admission = mountScheduler.enqueue({
+              node: currentNode,
+              scheduling,
+              signal: args.signal,
+              run: async (startupSignal) => {
+                // Refreshes that arrive while this generation is still
+                // deferred are folded into its first start instead of mounting
+                // a stale generation and immediately replacing it.
+                const effectiveForceBuild = forceBuild || queuedForceBuild;
+                const effectiveAllowBuildFallback = allowBuildFallback
+                  && queuedAllowBuildFallback;
+                queuedRefresh = false;
+                queuedForceBuild = false;
+                queuedAllowBuildFallback = true;
+                opened = await openOnceUnscheduled(
+                  effectiveForceBuild,
+                  effectiveAllowBuildFallback,
+                  startupSignal,
+                );
+              },
+            });
+            mountAdmission = admission;
+            try {
+              const started = await admission.result;
+              return started && opened;
+            } finally {
+              if (mountAdmission === admission) mountAdmission = null;
+            }
           };
           const open = async (options: TPreviewOpenOptions = {}): Promise<boolean> => {
             if (opening !== null) {
@@ -620,13 +711,6 @@ export function createFrontendWidgetExtension(
             void syncPreviewActions().catch(() => undefined);
           }
           await open();
-          const unsubscribeNode = args.onNodeChange?.((node) => {
-            viewportSync.updateNode(node);
-            const next = fnReadCanvasWidgetExtension(node);
-            if (next?.uiProps !== undefined && typeof next.uiProps === "object" && next.uiProps !== null && !Array.isArray(next.uiProps)) {
-              mount?.setProps(next.uiProps);
-            }
-          });
           const unsubscribeTheme = application.theme.service.subscribeThemeChange((theme) => {
             mount?.setTheme(fnWidgetHostTheme(theme));
           });
@@ -635,8 +719,11 @@ export function createFrontendWidgetExtension(
               ? closePreviewSession(args.node.id)
               : null;
             void previewClosure?.catch(() => undefined);
+            mountAdmission?.cancel();
             viewportSync.disconnect();
+            schedulingModeSync.disconnect();
             unsubscribeNode?.();
+            unsubscribeScheduling();
             unsubscribeTheme();
             reloadByNode.delete(args.node.id);
             previewWidgetKeyByNode.delete(args.node.id);
@@ -747,6 +834,13 @@ export function createFrontendWidgetExtension(
         async dispose() {
           unregisterWidgetHost();
           catalogEventController.abort("widget-extension-disposed");
+          if (diagnosticsOwner.__OMNIDRAW_WIDGET_RUNTIME_DIAGNOSTICS__ === runtimeDiagnostics) {
+            if (previousRuntimeDiagnostics === undefined) {
+              delete diagnosticsOwner.__OMNIDRAW_WIDGET_RUNTIME_DIAGNOSTICS__;
+            } else {
+              diagnosticsOwner.__OMNIDRAW_WIDGET_RUNTIME_DIAGNOSTICS__ = previousRuntimeDiagnostics;
+            }
+          }
           if (catalogRefreshTimer !== undefined) {
             application.ownerWindow.clearTimeout(catalogRefreshTimer);
             catalogRefreshTimer = undefined;
@@ -756,6 +850,7 @@ export function createFrontendWidgetExtension(
           reloadByNode.clear();
           previewWidgetKeyByNode.clear();
           syncPreviewActionsByNode.clear();
+          await mountScheduler.dispose();
           mounts.clear();
           await Promise.allSettled(previewClosureByNode.values());
           previewClosureByNode.clear();

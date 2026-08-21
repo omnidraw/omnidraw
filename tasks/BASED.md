@@ -353,7 +353,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A121](a/A121.md) - AI Chat: automatic Preview lifecycle and last-good rendering
 - [x]: [A122](a/A122.md) - server startup: import existing Pi credentials once
 - [x]: [A123](a/A123.md) - sidebar: align widget icons with row labels
-- [ ]: [A124](a/A124.md) - Widget runtime: visible-first startup and shared artifact caching
+- [x]: [A124](a/A124.md) - Widget runtime: visible-first startup and shared artifact caching
 - [x]: [A125](a/A125.md) - Preview: explicitly replace a frame with the published widget
 
 ## S ubtractions

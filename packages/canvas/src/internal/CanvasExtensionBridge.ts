@@ -1,6 +1,7 @@
 import type {
   IInfiniteCanvasEngine,
   ITransientSceneOwner,
+  TPortalState,
   TSerializedSceneCommand,
 } from '@omnidraw/cangine';
 import {
@@ -27,8 +28,10 @@ import type {
   TCanvasExternalPlacementPort,
   TCanvasExternalWidgetPreview,
   TCanvasShellProjectionPort,
+  TCanvasWidgetCleanup,
   TCanvasWidgetHostPort,
   TCanvasWidgetHostRegistration,
+  TCanvasWidgetSchedulingState,
   TCanvasWidgetTitlebarModel,
 } from '../extension';
 import type { TReproductionTraceSink } from '../debug-trace/typed';
@@ -45,11 +48,12 @@ type TMountRecord = {
   readonly contentHost: HTMLElement;
   readonly host: HTMLElement;
   readonly listeners: Set<(node: TWidgetFrameNode) => void>;
+  readonly schedulingListeners: Set<(state: TCanvasWidgetSchedulingState) => void>;
   node: TWidgetFrameNode;
   nodeSignature: string;
   titlebarModel: TCanvasWidgetTitlebarModel | null;
   titlebarElement: HTMLElement | null;
-  cleanup: (() => void) | null;
+  cleanup: TCanvasWidgetCleanup | null;
   cleanupInvoked: boolean;
   retired: boolean;
 };
@@ -59,6 +63,7 @@ type TPortalRecord = {
   readonly registrationId: string;
   readonly runtimeIdentity: string;
   readonly mounts: Set<TMountRecord>;
+  scheduling: TCanvasWidgetSchedulingState;
   unregister: () => void;
 };
 
@@ -74,6 +79,81 @@ type TRegistrationRecord = {
   readonly registration: TCanvasWidgetHostRegistration;
   readonly actions: Set<AbortController>;
 };
+
+const MAX_WIDGET_DISTANCE = 1_000_000;
+
+const COLD_WIDGET_SCHEDULING: TCanvasWidgetSchedulingState = Object.freeze({
+  eligible: false,
+  visible: false,
+  distance: MAX_WIDGET_DISTANCE,
+  priority: 0,
+  occlusion: 1,
+});
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  if (!Number.isFinite(value)) return maximum;
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function schedulingGeometry(
+  state: TPortalState | null,
+  viewportSize: Readonly<{ width: number; height: number }>,
+): Readonly<{ distance: number; occlusion: number }> {
+  const bounds = state?.geometry?.viewportBounds;
+  const viewportWidth = Number.isFinite(viewportSize.width) && viewportSize.width > 0
+    ? Math.min(MAX_WIDGET_DISTANCE, viewportSize.width)
+    : 0;
+  const viewportHeight = Number.isFinite(viewportSize.height) && viewportSize.height > 0
+    ? Math.min(MAX_WIDGET_DISTANCE, viewportSize.height)
+    : 0;
+  if (
+    bounds === undefined
+    || !Number.isFinite(bounds.minX)
+    || !Number.isFinite(bounds.minY)
+    || !Number.isFinite(bounds.maxX)
+    || !Number.isFinite(bounds.maxY)
+    || bounds.maxX <= bounds.minX
+    || bounds.maxY <= bounds.minY
+  ) {
+    return Object.freeze({ distance: MAX_WIDGET_DISTANCE, occlusion: 1 });
+  }
+  const horizontalDistance = Math.max(0, -bounds.maxX, bounds.minX - viewportWidth);
+  const verticalDistance = Math.max(0, -bounds.maxY, bounds.minY - viewportHeight);
+  const distance = clamp(
+    Math.hypot(horizontalDistance, verticalDistance),
+    0,
+    MAX_WIDGET_DISTANCE,
+  );
+  const width = bounds.maxX - bounds.minX;
+  const height = bounds.maxY - bounds.minY;
+  const visibleWidth = Math.max(
+    0,
+    Math.min(bounds.maxX, viewportWidth) - Math.max(bounds.minX, 0),
+  );
+  const visibleHeight = Math.max(
+    0,
+    Math.min(bounds.maxY, viewportHeight) - Math.max(bounds.minY, 0),
+  );
+  const visibleFraction = clamp(visibleWidth / width, 0, 1)
+    * clamp(visibleHeight / height, 0, 1);
+  return Object.freeze({
+    distance,
+    occlusion: state?.visible === true
+      ? clamp(1 - visibleFraction, 0, 1)
+      : 1,
+  });
+}
+
+function sameSchedulingState(
+  left: TCanvasWidgetSchedulingState,
+  right: TCanvasWidgetSchedulingState,
+): boolean {
+  return left.eligible === right.eligible
+    && left.visible === right.visible
+    && left.distance === right.distance
+    && left.priority === right.priority
+    && left.occlusion === right.occlusion;
+}
 
 type TPlacementPreviewRecord = {
   readonly owner: ITransientSceneOwner;
@@ -169,9 +249,13 @@ export class CanvasExtensionBridge {
   readonly #registrations = new Map<string, TRegistrationRecord>();
   readonly #portals = new Map<string, TPortalRecord>();
   readonly #placementPreviews = new Set<TPlacementPreviewRecord>();
+  readonly #pendingMounts = new Set<Promise<void | TCanvasWidgetCleanup>>();
+  readonly #pendingMountCleanups = new Set<Promise<void>>();
   readonly #releaseDocument: () => void;
   readonly #releaseActions: () => void;
+  readonly #releaseEditor: () => void;
   readonly #releasePortalState: () => void;
+  readonly #releaseShell: () => void;
   #disposed = false;
 
   constructor(options: TCanvasExtensionBridgeOptions) {
@@ -192,12 +276,20 @@ export class CanvasExtensionBridge {
     this.#releaseDocument = options.document.subscribeAuthored(() => {
       this.#reconcilePortals();
       this.#notifyMountedNodes();
+      this.#refreshAllScheduling();
       this.#refreshTitlebars();
     });
     this.#releaseActions = options.subscribeWidgetActions(
       (activation) => this.#handleActivation(activation),
     );
+    this.#releaseEditor = options.editor.subscribe(() => {
+      this.#refreshAllScheduling();
+    });
+    this.#releaseShell = options.shell.subscribe(() => {
+      this.#refreshAllScheduling();
+    });
     this.#releasePortalState = options.engine.portals.subscribe(() => {
+      this.#refreshAllScheduling();
       this.#refreshTitlebars();
     });
   }
@@ -207,7 +299,9 @@ export class CanvasExtensionBridge {
     this.#disposed = true;
     this.#releaseDocument();
     this.#releaseActions();
+    this.#releaseEditor();
     this.#releasePortalState();
+    this.#releaseShell();
     for (const record of this.#registrations.values()) {
       for (const action of record.actions) action.abort();
       record.actions.clear();
@@ -218,6 +312,8 @@ export class CanvasExtensionBridge {
     for (const preview of [...this.#placementPreviews]) {
       this.#disposePlacementPreview(preview);
     }
+    await Promise.allSettled([...this.#pendingMounts]);
+    await Promise.allSettled([...this.#pendingMountCleanups]);
     await this.#effects.dispose();
   }
 
@@ -443,6 +539,76 @@ export class CanvasExtensionBridge {
       === fnStringifyCanonicalCanvasJson(node);
   }
 
+  #schedulingForPortal(portal: TPortalRecord): TCanvasWidgetSchedulingState {
+    const node = this.#options.engine.scene.get(portal.nodeId);
+    if (node?.kind !== 'widget-frame') return COLD_WIDGET_SCHEDULING;
+    const unavailable = node.collapsed === true
+      || this.#options.engine.scene.ancestorsOf(node.id, { includeSelf: true })
+        .some((ancestor) => ancestor.visibility === 'hidden' || ancestor.opacity === 0);
+    const portalId = `omnidraw:widget:${portal.nodeId}`;
+    const portalState = this.#options.engine.portals.state(portalId);
+    const geometry = schedulingGeometry(
+      portalState,
+      this.#options.engine.camera.viewportSize,
+    );
+    if (unavailable) {
+      return Object.freeze({
+        eligible: false,
+        visible: false,
+        distance: geometry.distance,
+        priority: 0,
+        occlusion: 1,
+      });
+    }
+    const shell = this.#options.shell.state();
+    let priority: TCanvasWidgetSchedulingState['priority'];
+    if (shell.kind === 'maximized-widget' && shell.widgetId === portal.nodeId) {
+      priority = 4;
+    } else if (
+      (shell.kind === 'contained-widget' && shell.widgetId === portal.nodeId)
+      || this.#options.editor.state.focusedNodeId === portal.nodeId
+    ) {
+      priority = 3;
+    } else if (this.#options.editor.state.selectedNodeIds.includes(portal.nodeId)) {
+      priority = 2;
+    } else if (portalState?.visible === true) {
+      priority = 1;
+    } else {
+      priority = 0;
+    }
+    return Object.freeze({
+      eligible: priority > 0,
+      visible: portalState?.visible === true,
+      distance: geometry.distance,
+      priority,
+      occlusion: geometry.occlusion,
+    });
+  }
+
+  #refreshPortalScheduling(portal: TPortalRecord): void {
+    if (this.#disposed || this.#portals.get(portal.nodeId) !== portal) return;
+    const next = this.#schedulingForPortal(portal);
+    if (sameSchedulingState(portal.scheduling, next)) return;
+    portal.scheduling = next;
+    for (const mount of portal.mounts) {
+      if (mount.retired) continue;
+      for (const listener of [...mount.schedulingListeners]) {
+        try {
+          listener(next);
+        } catch (error) {
+          this.#options.onError(error);
+        }
+      }
+    }
+  }
+
+  #refreshAllScheduling(): void {
+    if (this.#disposed) return;
+    for (const portal of this.#portals.values()) {
+      this.#refreshPortalScheduling(portal);
+    }
+  }
+
   #reconcilePortals(): void {
     if (this.#disposed) return;
     const desired = new Map<string, TRegistrationRecord>();
@@ -481,6 +647,7 @@ export class CanvasExtensionBridge {
         registrationId: registration.registration.id,
         runtimeIdentity: widgetRuntimeIdentity(node),
         mounts: new Set(),
+        scheduling: COLD_WIDGET_SCHEDULING,
         unregister: () => undefined,
       };
       this.#portals.set(nodeId, portal);
@@ -488,7 +655,10 @@ export class CanvasExtensionBridge {
         portal.unregister = this.#options.engine.portals.register({
           portalId: `omnidraw:widget:${nodeId}`,
           mount: ({ host }) => this.#mountWidget(portal, registration, host),
+          onVisibilityChange: () => this.#refreshPortalScheduling(portal),
+          onGeometryChange: () => this.#refreshPortalScheduling(portal),
         });
+        this.#refreshPortalScheduling(portal);
       } catch (error) {
         this.#portals.delete(nodeId);
         this.#options.onError(error);
@@ -528,6 +698,7 @@ export class CanvasExtensionBridge {
       contentHost,
       host,
       listeners: new Set(),
+      schedulingListeners: new Set(),
       node,
       nodeSignature: fnStringifyCanonicalCanvasJson(node),
       titlebarModel: null,
@@ -543,6 +714,19 @@ export class CanvasExtensionBridge {
         node,
         container: contentHost,
         signal: mount.abort.signal,
+        scheduling: Object.freeze({
+          current: () => portal.scheduling,
+          subscribe: (listener: (state: TCanvasWidgetSchedulingState) => void) => {
+            if (mount.retired) return () => undefined;
+            mount.schedulingListeners.add(listener);
+            try {
+              listener(portal.scheduling);
+            } catch (error) {
+              this.#options.onError(error);
+            }
+            return () => { mount.schedulingListeners.delete(listener); };
+          },
+        }),
         setTitlebar: (model: TCanvasWidgetTitlebarModel) => {
           if (mount.retired) return;
           mount.titlebarModel = Object.freeze({ ...model });
@@ -566,7 +750,7 @@ export class CanvasExtensionBridge {
       mount.cleanup = result ?? null;
       return () => this.#retireMount(portal, mount);
     }
-    return Promise.resolve(result).then((cleanup) => {
+    const pending = Promise.resolve(result).then((cleanup) => {
       if (cleanup !== undefined && typeof cleanup !== 'function') {
         throw new TypeError('Widget mount Promise must resolve to void or a disposer.');
       }
@@ -580,6 +764,9 @@ export class CanvasExtensionBridge {
       this.#retireMount(portal, mount);
       throw error;
     });
+    this.#pendingMounts.add(pending);
+    void pending.finally(() => { this.#pendingMounts.delete(pending); }).catch(() => undefined);
+    return pending;
   }
 
   #retireMount(portal: TPortalRecord, mount: TMountRecord): void {
@@ -587,6 +774,7 @@ export class CanvasExtensionBridge {
     mount.retired = true;
     mount.abort.abort();
     mount.listeners.clear();
+    mount.schedulingListeners.clear();
     mount.titlebarElement?.remove();
     mount.titlebarElement = null;
     portal.mounts.delete(mount);
@@ -595,11 +783,18 @@ export class CanvasExtensionBridge {
     mount.contentHost.remove();
   }
 
-  #invokeMountCleanup(mount: TMountRecord, cleanup: () => void): void {
+  #invokeMountCleanup(mount: TMountRecord, cleanup: TCanvasWidgetCleanup): void {
     if (mount.cleanupInvoked) return;
     mount.cleanupInvoked = true;
     try {
-      cleanup();
+      const result = cleanup();
+      if (result !== undefined) {
+        const pending = Promise.resolve(result).then(
+          () => undefined,
+          (error) => { this.#options.onError(error); },
+        ).finally(() => { this.#pendingMountCleanups.delete(pending); });
+        this.#pendingMountCleanups.add(pending);
+      }
     } catch (error) {
       this.#options.onError(error);
     }

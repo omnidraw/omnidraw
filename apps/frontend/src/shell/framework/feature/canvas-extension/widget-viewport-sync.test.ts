@@ -42,12 +42,25 @@ describe("createWidgetViewportSync", () => {
       },
       devicePixelRatio: () => 2,
       node: frame(),
+      scheduling: {
+        eligible: true,
+        visible: true,
+        priority: 2,
+        distance: 0,
+        occlusion: 0,
+      },
     });
     const initial = sync.current();
     sync.attach({ setViewport: (viewport) => updates.push(viewport) }, initial);
 
     expect(observed).toBe(container);
-    expect(initial).toMatchObject({ width: 360, height: 320, scale: 2 });
+    expect(initial).toMatchObject({
+      width: 360,
+      height: 320,
+      scale: 2,
+      visibility: "visible",
+      priority: 2,
+    });
     expect(updates).toHaveLength(0);
 
     callback?.([{
@@ -71,8 +84,23 @@ describe("createWidgetViewportSync", () => {
       visibility: "hidden",
     });
 
+    sync.updateScheduling({
+      eligible: false,
+      visible: false,
+      priority: 0,
+      distance: 640,
+      occlusion: 1,
+    });
+    expect(updates).toHaveLength(3);
+    expect(updates[2]).toMatchObject({
+      visibility: "hidden",
+      priority: 0,
+      distance: 640,
+      occlusion: 1,
+    });
+
     const attached = { setViewport: (viewport: TWidgetViewport) => updates.push(viewport) };
-    sync.attach(attached, updates[1]!);
+    sync.attach(attached, updates[2]!);
     sync.detach({ setViewport: () => undefined });
     sync.updateNode(frame("visible"));
     expect(updates).toHaveLength(3);

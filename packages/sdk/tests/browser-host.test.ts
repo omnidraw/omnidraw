@@ -62,6 +62,22 @@ describe('@omnidraw/sdk/host', () => {
 
     await expect(host.validateArtifact({ ...artifact, digestSha256: 'c'.repeat(64) }))
       .rejects.toThrow('digest verification');
+    expect(host.diagnostics()).toEqual({
+      liveHosts: 0,
+      liveMounts: 0,
+      hostCreations: 0,
+      artifactCache: {
+        entries: 0,
+        totalBytes: 0,
+        hits: 0,
+        misses: 0,
+        puts: 0,
+        evictions: 0,
+      },
+      pendingArtifactAdmissions: 0,
+    });
+    expect(JSON.stringify(host.diagnostics())).not.toMatch(/sha256|CryptoKey|Effect/);
     await host.dispose();
+    expect(host.diagnostics().artifactCache.entries).toBe(0);
   });
 });

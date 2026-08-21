@@ -1,7 +1,10 @@
 import type { TWidgetFrameNode } from "@omnidraw/canvas-contract";
 import type { TWidgetViewport } from "@omnidraw/sdk";
 
-import { fnWidgetViewport } from "@/core/widgets/fn.widget-viewport";
+import {
+  fnWidgetViewport,
+  type TWidgetViewportScheduling,
+} from "@/core/widgets/fn.widget-viewport";
 
 type TViewportSink = Readonly<{
   setViewport(viewport: TWidgetViewport): void;
@@ -12,6 +15,7 @@ type TWidgetViewportSyncArgs = Readonly<{
   createResizeObserver(callback: ResizeObserverCallback): ResizeObserver;
   devicePixelRatio(): number;
   node: TWidgetFrameNode;
+  scheduling: TWidgetViewportScheduling;
 }>;
 
 /** Keeps Capsule's viewport aligned with the live Canvas portal content box. */
@@ -21,8 +25,10 @@ export function createWidgetViewportSync(args: TWidgetViewportSyncArgs): Readonl
   detach(sink: TViewportSink): void;
   disconnect(): void;
   updateNode(node: TWidgetFrameNode): void;
+  updateScheduling(scheduling: TWidgetViewportScheduling): void;
 }> {
   let node = args.node;
+  let scheduling = args.scheduling;
   let hostWidth = args.container.clientWidth;
   let hostHeight = args.container.clientHeight;
   let sink: TViewportSink | null = null;
@@ -34,6 +40,7 @@ export function createWidgetViewportSync(args: TWidgetViewportSyncArgs): Readonl
     width: hostWidth,
     height: hostHeight,
     devicePixelRatio: args.devicePixelRatio(),
+    scheduling,
   });
   const sync = (): void => {
     if (disposed || sink === null) return;
@@ -44,6 +51,9 @@ export function createWidgetViewportSync(args: TWidgetViewportSyncArgs): Readonl
       && next.height === lastViewport.height
       && next.scale === lastViewport.scale
       && next.visibility === lastViewport.visibility
+      && next.distance === lastViewport.distance
+      && next.priority === lastViewport.priority
+      && next.occlusion === lastViewport.occlusion
     ) return;
     sink.setViewport(next);
     lastViewport = next;
@@ -76,6 +86,10 @@ export function createWidgetViewportSync(args: TWidgetViewportSyncArgs): Readonl
     },
     updateNode(nextNode) {
       node = nextNode;
+      sync();
+    },
+    updateScheduling(nextScheduling) {
+      scheduling = nextScheduling;
       sync();
     },
   });

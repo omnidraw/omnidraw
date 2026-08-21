@@ -204,5 +204,20 @@ export interface IWidgetBrowserHost {
   validateArtifact(input: unknown): Promise<TWidgetBrowserArtifact>;
   mount(request: TWidgetBrowserMountRequest): Promise<IWidgetBrowserMount>;
   inspect(request: TWidgetBrowserMountRequest): Promise<IWidgetBrowserInspectionMount>;
+  /** Bounded counters only; cache keys, bytes, CryptoKeys, and Effect values stay private. */
+  diagnostics(): Readonly<{
+    liveHosts: number;
+    liveMounts: number;
+    hostCreations: number;
+    artifactCache: Readonly<{
+      entries: number;
+      totalBytes: number;
+      hits: number;
+      misses: number;
+      puts: number;
+      evictions: number;
+    }>;
+    pendingArtifactAdmissions: number;
+  }>;
   dispose(): Promise<void>;
 }

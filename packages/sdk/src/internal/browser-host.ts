@@ -57,6 +57,11 @@ import {
 import { fnOmnidrawWidgetNotificationOutput } from './capsule/fn.channel-values';
 import type { TOmnidrawCapsuleCapabilityContract } from './capsule/types';
 import { fnCapsuleMountErrorDiagnostic } from './fn.capsule-mount-error-diagnostic';
+import {
+  createArtifactAdmissionCache,
+  fnArtifactAdmissionKey,
+  type TArtifactAdmissionLease,
+} from './artifact-admission-cache';
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
@@ -110,26 +115,43 @@ function ownedBuffer(bytes: Uint8Array): ArrayBuffer {
   return buffer;
 }
 
-async function signingKeys(
+type TSigningAuthority = Readonly<{
+  keyId: string;
+  key: CryptoKey;
+  publicKeyBytesHex: string;
+  publicKeyFingerprintSha256: `sha256:${string}`;
+}>;
+
+async function signingAuthority(
   catalog: TWidgetHostConfiguration,
+  keyId: string,
   document: Document,
-): Promise<ReadonlyMap<string, CryptoKey>> {
+): Promise<TSigningAuthority> {
+  const configuredKeys = catalog.signingKeys.filter((candidate) => candidate.keyId === keyId);
+  if (configuredKeys.length !== 1) throw new Error('Widget artifact signing authority is unavailable or ambiguous.');
+  const configured = configuredKeys[0]!;
+  if (configured.algorithm !== 'Ed25519' || configured.format !== 'raw') {
+    throw new Error(`Widget signing key '${configured.keyId}' uses an unsupported format.`);
+  }
   const subtle = document.defaultView?.crypto.subtle ?? globalThis.crypto?.subtle;
   if (subtle === undefined) throw new Error('Web Crypto is required to verify widget artifacts.');
-  const entries = await Promise.all(catalog.signingKeys.map(async (key) => {
-    if (key.algorithm !== 'Ed25519' || key.format !== 'raw') {
-      throw new Error(`Widget signing key '${key.keyId}' uses an unsupported format.`);
-    }
-    const imported = await subtle.importKey(
-      'raw',
-      ownedBuffer(base64Bytes(key.publicKeyBase64, document.defaultView)),
-      { name: 'Ed25519' },
-      false,
-      ['verify'],
-    );
-    return [key.keyId, imported] as const;
-  }));
-  return new Map(entries);
+  const bytes = base64Bytes(configured.publicKeyBase64, document.defaultView);
+  const fingerprint = new Uint8Array(await subtle.digest('SHA-256', ownedBuffer(bytes)));
+  const key = await subtle.importKey(
+    'raw',
+    ownedBuffer(bytes),
+    { name: 'Ed25519' },
+    false,
+    ['verify'],
+  );
+  const hex = (value: Uint8Array): string => [...value]
+    .map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  return Object.freeze({
+    keyId,
+    key,
+    publicKeyBytesHex: hex(bytes),
+    publicKeyFingerprintSha256: `sha256:${hex(fingerprint)}`,
+  });
 }
 
 async function defaultDigest(bytes: Uint8Array, document: Document): Promise<string> {
@@ -299,8 +321,23 @@ export async function createWidgetBrowserHost(
   const runtime = new SdkEffectRuntime();
   const liveHosts = new Set<THost>();
   const liveMounts = new Set<IWidgetBrowserMount>();
+  const inFlightMounts = new Set<Promise<unknown>>();
+  const inFlightMountControllers = new Set<AbortController>();
+  const artifactCacheMaxEntries = options.artifactCache?.maxEntries ?? 16;
+  const artifactCache = new CapsuleMemoryArtifactCache({
+    maxEntries: artifactCacheMaxEntries,
+    maxTotalBytes: options.artifactCache?.maxTotalBytes ?? 64 * 1_024 * 1_024,
+    maxArtifactBytes: options.artifactCache?.maxArtifactBytes ?? 16 * 1_024 * 1_024,
+  });
+  const artifactAdmissions = createArtifactAdmissionCache(
+    artifactCache,
+    runtime,
+    artifactCacheMaxEntries,
+  );
   let disposed = false;
+  let disposal: Promise<void> | undefined;
   let idSequence = 0;
+  let hostCreations = 0;
   const createId = options.createId ?? (() => `widget-invocation-${++idSequence}`);
   const readCatalog = async (): Promise<TWidgetHostConfiguration> => {
     const value = typeof options.catalog === 'function' ? await options.catalog() : options.catalog;
@@ -326,7 +363,7 @@ export async function createWidgetBrowserHost(
     return artifact;
   };
 
-  const mount = async (
+  const mountOne = async (
     request: TWidgetBrowserMountRequest,
     authoring: boolean,
   ): Promise<IWidgetBrowserMount | IWidgetBrowserInspectionMount> => {
@@ -344,9 +381,7 @@ export async function createWidgetBrowserHost(
     if (unsupportedApi !== undefined) throw new Error(`Widget API group '${unsupportedApi}' is outside host policy.`);
     const keyId = request.mode === 'preview' ? catalog.previewSigningKeyId : catalog.releaseSigningKeyId;
     if (!artifact.runtime.signatureKeyIds.includes(keyId)) throw new Error('Widget artifact lacks the required signing authority.');
-    const keys = await signingKeys(catalog, options.document);
-    const key = keys.get(keyId);
-    if (key === undefined) throw new Error('Widget artifact signing authority is unavailable.');
+    const authority = await signingAuthority(catalog, keyId, options.document);
     const derived = await capabilityContracts(artifact);
     const policy = Object.freeze(derived.contracts.map(({ descriptor }) => Object.freeze({
       effect: 'allow' as const,
@@ -355,13 +390,39 @@ export async function createWidgetBrowserHost(
       contractHash: descriptor.contractHash,
       operations: Object.freeze(descriptor.operations.map(({ name }) => name).sort()),
     })));
+    const admissionKey = fnArtifactAdmissionKey({
+      format: 'omnidraw.capsule-artifact-admission.v1',
+      artifact: {
+        bytesDigestSha256: artifact.digestSha256,
+        artifactHash: artifact.artifactHash,
+        apiContract: artifact.runtime.apiContract,
+      },
+      deployment: { mode: request.mode, catalogGeneration: catalog.generation },
+      hostPolicy: {
+        allowedApis: artifact.runtime.apiContract.groups,
+        limits: catalog.limits,
+        capabilities: policy,
+        schemas: derived.schemas.map(({ reference }) => reference),
+        vm: { mode: 'release', maxJobsPerDrain: 1_000, maxEntryDepth: 32 },
+      },
+      signaturePolicy: {
+        algorithm: 'Ed25519',
+        format: 'raw',
+        trustedKeyId: authority.keyId,
+        trustedKeyBytesHex: authority.publicKeyBytesHex,
+        trustedKeyFingerprintSha256: authority.publicKeyFingerprintSha256,
+        minimumValidSignatures: 1,
+        requiredKeyIds: [keyId],
+        rejectUntrustedSignatures: true,
+      },
+    });
     const hostOptions = {
       allowedApis: artifact.runtime.apiContract.groups,
       limits: catalog.limits,
       capabilities: policy,
       artifactVerification: {
         signaturePolicy: {
-          trustedKeys: new Map([[keyId, key]]),
+          trustedKeys: new Map([[keyId, authority.key]]),
           minimumValidSignatures: 1,
           requiredKeyIds: [keyId],
           rejectUntrustedSignatures: true,
@@ -369,25 +430,61 @@ export async function createWidgetBrowserHost(
       },
       vm: { mode: 'release' as const, maxJobsPerDrain: 1_000, maxEntryDepth: 32 },
       browserPlatform: createDefaultCapsuleBrowserPlatform({ document: options.document }),
-      artifactCache: new CapsuleMemoryArtifactCache({
-        maxEntries: options.artifactCache?.maxEntries ?? 16,
-        maxTotalBytes: options.artifactCache?.maxTotalBytes ?? 64 * 1_024 * 1_024,
-        maxArtifactBytes: options.artifactCache?.maxArtifactBytes ?? 16 * 1_024 * 1_024,
-      }),
+      artifactCache,
       schemas: derived.schemas,
     };
-    const inspection = authoring ? createCapsuleAuthoringInspection({ maxResults: 128, maxSummaryResults: 128, maxCanvases: 16 }) : undefined;
-    const host: THost = authoring
-      ? await createCapsuleAuthoringInspectionHost(hostOptions)
-      : await createCapsuleHost(hostOptions);
-    liveHosts.add(host);
-    for (const { descriptor } of derived.contracts) host.registerCapabilityDescriptor(descriptor);
-    const capabilityBindings = bindings(derived.contracts, request, createId);
+    let admission: TArtifactAdmissionLease | undefined;
+    let inspection: ReturnType<typeof createCapsuleAuthoringInspection> | undefined;
+    let host: THost | undefined;
+    let capabilityBindings: readonly CapsuleCapabilityBinding[] = Object.freeze([]);
     const grants: readonly CapsuleCapabilityGrant[] = Object.freeze(derived.contracts.map(({ grant }) => grant));
     let raw: CapsuleHandle | undefined;
     let stopAbort = (): void => undefined;
     let stopRuntimeErrors = (): void => undefined;
+    const assertMountActive = (): void => {
+      if (disposed) throw new Error('The widget browser host is disposed.');
+      if (request.signal?.aborted) throw request.signal.reason ?? new Error('Widget mount was aborted.');
+    };
     try {
+      admission = await artifactAdmissions.acquire({
+        admissionKey,
+        artifactHash: artifact.artifactHash,
+        artifactBytes: artifact.bytes,
+        signal: request.signal,
+      });
+      assertMountActive();
+      const prepareAttempt = async (): Promise<void> => {
+        assertMountActive();
+        inspection = authoring
+          ? createCapsuleAuthoringInspection({ maxResults: 128, maxSummaryResults: 128, maxCanvases: 16 })
+          : undefined;
+        host = authoring
+          ? await createCapsuleAuthoringInspectionHost(hostOptions)
+          : await createCapsuleHost(hostOptions);
+        hostCreations += 1;
+        liveHosts.add(host);
+        const attemptHost = host;
+        const startupAbort = (): void => { void attemptHost.destroy(); };
+        request.signal?.addEventListener('abort', startupAbort, { once: true });
+        stopAbort = () => request.signal?.removeEventListener('abort', startupAbort);
+        assertMountActive();
+        for (const { descriptor } of derived.contracts) host.registerCapabilityDescriptor(descriptor);
+        capabilityBindings = bindings(derived.contracts, request, createId);
+      };
+      const retireFailedAttempt = async (): Promise<void> => {
+        stopAbort();
+        stopAbort = () => undefined;
+        inspection?.dispose();
+        inspection = undefined;
+        for (const binding of capabilityBindings) {
+          await Promise.resolve(binding.dispose()).catch(() => undefined);
+        }
+        capabilityBindings = Object.freeze([]);
+        await host?.destroy().catch(() => undefined);
+        if (host !== undefined) liveHosts.delete(host);
+        host = undefined;
+      };
+      await prepareAttempt();
       const report = (event: CapsuleMountErrorEvent): void => {
         const mapped = fnCapsuleMountErrorDiagnostic(event);
         try { request.onDiagnostic?.(mapped); } catch { /* Observers cannot affect the runtime. */ }
@@ -395,9 +492,11 @@ export async function createWidgetBrowserHost(
           try { request.onFatal?.(mapped); } catch { /* Observers cannot affect cleanup. */ }
         }
       };
-      raw = authoring
-        ? await (host as CapsuleAuthoringInspectionHost).mount({
-            artifact: artifact.bytes,
+      const mountArtifact = async (
+        source: Readonly<Uint8Array> | Readonly<{ hash: typeof artifact.artifactHash }>,
+      ): Promise<CapsuleHandle> => authoring
+        ? (host as CapsuleAuthoringInspectionHost).mount({
+            artifact: source,
             container: request.container,
             capabilityBindings,
             grants,
@@ -408,8 +507,8 @@ export async function createWidgetBrowserHost(
             // This listener covers startup before Capsule can return a handle.
             onError: report,
           })
-        : await (host as CapsuleHost).mount({
-            artifact: artifact.bytes,
+        : (host as CapsuleHost).mount({
+            artifact: source,
             container: request.container,
             capabilityBindings,
             grants,
@@ -419,6 +518,24 @@ export async function createWidgetBrowserHost(
             // This listener covers startup before Capsule can return a handle.
             onError: report,
           });
+      try {
+        raw = await mountArtifact(admission.cached
+          ? Object.freeze({ hash: artifact.artifactHash })
+          : artifact.bytes);
+      } catch (error) {
+        if (!(
+          admission.cached
+          && error instanceof CapsuleHostError
+          && (error.code === 'ARTIFACT_CACHE_MISS' || error.code === 'ARTIFACT_REJECTED')
+        )) throw error;
+        // The bounded shared cache may evict between admission and Capsule's
+        // lookup. Capsule consumes mount-local bindings on failure, so retry
+        // only through a completely fresh isolated host transaction.
+        await retireFailedAttempt();
+        await prepareAttempt();
+        raw = await mountArtifact(artifact.bytes);
+      }
+      assertMountActive();
       const runtimeErrorSubscription = raw.onError(report);
       let runtimeErrorsSubscribed = true;
       stopRuntimeErrors = () => {
@@ -430,9 +547,15 @@ export async function createWidgetBrowserHost(
         throw new Error('Mounted widget artifact hash does not match runtime metadata.');
       }
       raw.setViewport(request.viewport);
+      assertMountActive();
+      // Admission covers successful Capsule verification and initial lifecycle
+      // publication, never merely an SDK digest check.
+      admission.succeed();
       let finished = false;
       let disposal: Promise<void> | undefined;
       const mounted = raw;
+      const mountedHost = host;
+      if (mountedHost === undefined) throw new Error('Capsule host creation did not complete.');
       const base: IWidgetBrowserMount = Object.freeze({
         ready: () => mounted.ready(),
         setProps: (value: Parameters<IWidgetBrowserMount['setProps']>[0]) => mounted.setProps(value),
@@ -451,13 +574,14 @@ export async function createWidgetBrowserHost(
           stopRuntimeErrors();
           disposal = mounted.destroy(reason).catch(() => undefined).then(async () => {
             inspection?.dispose();
-            await host.destroy().catch(() => undefined);
-            liveHosts.delete(host);
+            await mountedHost.destroy().catch(() => undefined);
+            liveHosts.delete(mountedHost);
             liveMounts.delete(base);
           });
           return disposal;
         },
       });
+      stopAbort();
       const onAbort = (): void => { void base.dispose('aborted'); };
       request.signal?.addEventListener('abort', onAbort, { once: true });
       stopAbort = () => request.signal?.removeEventListener('abort', onAbort);
@@ -466,30 +590,67 @@ export async function createWidgetBrowserHost(
       if (!authoring) return base;
       return Object.freeze({ ...base, inspection: inspectionController(inspection!) });
     } catch (error) {
+      admission?.fail(error);
       stopAbort();
       stopRuntimeErrors();
       await raw?.destroy('mount-failed').catch(() => undefined);
       inspection?.dispose();
       for (const binding of capabilityBindings) await Promise.resolve(binding.dispose()).catch(() => undefined);
-      await host.destroy().catch(() => undefined);
-      liveHosts.delete(host);
+      await host?.destroy().catch(() => undefined);
+      if (host !== undefined) liveHosts.delete(host);
       if (error instanceof CapsuleHostError) throw safeHostFailure(error);
       throw error;
     }
   };
 
+  const trackedMount = <T extends IWidgetBrowserMount>(
+    request: TWidgetBrowserMountRequest,
+    authoring: boolean,
+  ): Promise<T> => {
+    const controller = new AbortController();
+    inFlightMountControllers.add(controller);
+    const signal = request.signal === undefined
+      ? controller.signal
+      : AbortSignal.any([request.signal, controller.signal]);
+    const trackedRequest = Object.freeze({ ...request, signal });
+    let operation: Promise<T>;
+    operation = (mountOne(trackedRequest, authoring) as Promise<T>).finally(() => {
+      inFlightMountControllers.delete(controller);
+      inFlightMounts.delete(operation);
+    });
+    inFlightMounts.add(operation);
+    return operation;
+  };
+
   return Object.freeze({
     validateArtifact,
-    mount: (request: TWidgetBrowserMountRequest) => mount(request, false) as Promise<IWidgetBrowserMount>,
-    inspect: (request: TWidgetBrowserMountRequest) => mount(request, true) as Promise<IWidgetBrowserInspectionMount>,
-    async dispose(): Promise<void> {
-      if (disposed) return;
+    mount: (request: TWidgetBrowserMountRequest) => trackedMount<IWidgetBrowserMount>(request, false),
+    inspect: (request: TWidgetBrowserMountRequest) => trackedMount<IWidgetBrowserInspectionMount>(request, true),
+    diagnostics: () => Object.freeze({
+      liveHosts: liveHosts.size,
+      liveMounts: liveMounts.size,
+      hostCreations,
+      artifactCache: Object.freeze({ ...artifactCache.diagnostics() }),
+      pendingArtifactAdmissions: artifactAdmissions.diagnostics().pendingAdmissions,
+    }),
+    dispose(): Promise<void> {
+      if (disposal !== undefined) return disposal;
       disposed = true;
-      await Promise.all([...liveMounts].map((value) => value.dispose('host-disposed')));
-      await Promise.all([...liveHosts].map((value) => value.destroy().catch(() => undefined)));
-      liveHosts.clear();
-      liveMounts.clear();
-      await runtime.dispose();
+      // Interrupt every operation before awaiting it; some Capsule startup
+      // paths settle only after their isolated host is destroyed.
+      for (const controller of inFlightMountControllers) {
+        controller.abort(new Error('The widget browser host is disposed.'));
+      }
+      artifactAdmissions.clear();
+      disposal = (async () => {
+        await Promise.allSettled([...inFlightMounts]);
+        await Promise.all([...liveMounts].map((value) => value.dispose('host-disposed')));
+        await Promise.all([...liveHosts].map((value) => value.destroy().catch(() => undefined)));
+        liveHosts.clear();
+        liveMounts.clear();
+        await runtime.dispose();
+      })();
+      return disposal;
     },
   });
 }

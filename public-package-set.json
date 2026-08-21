@@ -2,8 +2,8 @@
   "format": "omnidraw.public-package-set.v1",
   "packages": {
     "@omnidraw/canvas-contract": "0.7.0",
-    "@omnidraw/canvas": "0.10.0",
-    "@omnidraw/sdk": "0.7.0",
+    "@omnidraw/canvas": "0.11.0",
+    "@omnidraw/sdk": "0.14.0",
     "@omnidraw/component-ai-chat": "0.3.0",
     "@omnidraw/theme": "0.1.0"
   },

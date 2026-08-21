@@ -51,7 +51,7 @@ intent to its extension-only selection mutation decorator. Cangine still plans
 the compatible targets and sends one finalized batch unchanged to
 `CanvasDocumentService`.
 
-The `0.10.0` line uses `@omnidraw/canvas-contract@0.7.0`, the public
+The `0.11.0` line uses `@omnidraw/canvas-contract@0.7.0`, the public
 `@omnidraw/theme`, exact `effect@4.0.0-rc.108` internally, and exact
 `@omnidraw/cangine@0.6.1`. The host provides one exact
 `solid-js@2.0.0-rc.0` and `@solidjs/web@2.0.0-rc.0` pair; neither Effect nor

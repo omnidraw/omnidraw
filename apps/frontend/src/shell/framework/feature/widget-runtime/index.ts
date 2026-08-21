@@ -158,6 +158,11 @@ export class FrontendWidgetRuntime {
     });
   }
 
+  async diagnostics(): Promise<ReturnType<IWidgetBrowserHost["diagnostics"]>> {
+    const host = await this.#hostPromise;
+    return host.diagnostics();
+  }
+
   async buildState(
     widgetKey: string,
     signal?: AbortSignal,

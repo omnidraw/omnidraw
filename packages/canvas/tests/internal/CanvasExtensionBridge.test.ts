@@ -2,6 +2,7 @@ import {
   createEvenOrderKeys,
   orderKeyBetween,
   type TPortalRegistration,
+  type TPortalState,
   type TSceneNode,
 } from '@omnidraw/cangine';
 import type { TWidgetActivation } from '@omnidraw/cangine/editor';
@@ -25,6 +26,24 @@ const transform = {
   skew: { x: 0, y: 0 },
   origin: { x: 0, y: 0 },
 } as const;
+
+function transformMatrix(): readonly [number, number, number, number, number, number, number, number, number] {
+  return [1, 0, 0, 0, 1, 0, 0, 0, 1];
+}
+
+function portalGeometry(
+  viewportBounds: Readonly<{ minX: number; minY: number; maxX: number; maxY: number }>,
+): NonNullable<TPortalState['geometry']> {
+  return {
+    nodeId: 'widget-a',
+    viewportMatrix: transformMatrix(),
+    viewportBounds,
+    visibleWorldBounds: { minX: -100, minY: -50, maxX: 1_500, maxY: 1_150 },
+    clipped: false,
+    interactive: true,
+    devicePixelRatio: 2,
+  };
+}
 
 function widget(title = 'Chat'): TWidgetFrameNode {
   return {
@@ -73,8 +92,25 @@ function harness() {
   let accepted: TSceneNode = authored;
   let sceneNodes: TSceneNode[] = [authored];
   const authoredListeners = new Set<() => void>();
-  const portalListeners = new Set<() => void>();
+  const editorListeners = new Set<() => void>();
+  const portalListeners = new Set<(state: TPortalState) => void>();
+  const shellListeners = new Set<() => void>();
   let portalRegistration: TPortalRegistration | null = null;
+  let portalState: TPortalState = {
+    portalId: 'omnidraw:widget:widget-a',
+    nodeId: 'widget-a',
+    mounted: true,
+    visible: true,
+    geometry: portalGeometry({ minX: 100, minY: 50, maxX: 460, maxY: 330 }),
+  };
+  let editorState = {
+    selectedNodeIds: [] as readonly string[],
+    focusedNodeId: null as string | null,
+  };
+  let shellState = { kind: 'canvas' as const, widgetId: null } as
+    | { kind: 'canvas'; widgetId: null }
+    | { kind: 'contained-widget'; widgetId: string }
+    | { kind: 'maximized-widget'; widgetId: string };
   let mountedCleanup: (() => void | Promise<void>) | null = null;
   let actionListener: ((activation: TWidgetActivation) => void) | null = null;
   const unregisterPortal = vi.fn(() => {
@@ -113,13 +149,35 @@ function harness() {
   const editor = {
     commitSceneMutation,
     setSelection,
+    get state() { return editorState; },
+    subscribe(listener: () => void) {
+      editorListeners.add(listener);
+      return () => { editorListeners.delete(listener); };
+    },
   };
   const engine = {
     scene: {
+      get: (nodeId: string) => sceneNodes.find((node) => node.id === nodeId) ?? null,
       has: (nodeId: string) => sceneNodes.some((node) => node.id === nodeId),
       childrenOf: (parentId: string | null) => sceneNodes
         .filter((node) => node.parentId === parentId)
         .sort((left, right) => left.orderKey < right.orderKey ? -1 : left.orderKey > right.orderKey ? 1 : 0),
+      ancestorsOf: (nodeId: string, options?: { includeSelf?: boolean }) => {
+        const ancestors: TSceneNode[] = [];
+        let current = sceneNodes.find((node) => node.id === nodeId) ?? null;
+        if (current !== null && options?.includeSelf !== true) {
+          current = current.parentId === null
+            ? null
+            : sceneNodes.find((node) => node.id === current!.parentId) ?? null;
+        }
+        while (current !== null) {
+          ancestors.unshift(current);
+          current = current.parentId === null
+            ? null
+            : sceneNodes.find((node) => node.id === current!.parentId) ?? null;
+        }
+        return ancestors;
+      },
     },
     camera: {
       viewportSize: { width: 800, height: 600 },
@@ -135,7 +193,10 @@ function harness() {
         portalRegistration = registration;
         return unregisterPortal;
       },
-      subscribe(listener: () => void) {
+      state(portalId: string) {
+        return portalState.portalId === portalId ? portalState : null;
+      },
+      subscribe(listener: (state: TPortalState) => void) {
         portalListeners.add(listener);
         return () => { portalListeners.delete(listener); };
       },
@@ -157,9 +218,13 @@ function harness() {
     engine: engine as never,
     trace: null,
     shell: {
-      state: () => ({ kind: 'canvas', widgetId: null }),
+      state: () => shellState,
       owns: () => true,
-      subscribe: () => () => undefined,
+      subscribe(listener) {
+        const notify = () => listener(shellState);
+        shellListeners.add(notify);
+        return () => { shellListeners.delete(notify); };
+      },
       registerOverlay: () => () => undefined,
     },
     subscribeWidgetActions(listener) {
@@ -180,6 +245,31 @@ function harness() {
     createPreviewOwner,
     portal: () => portalRegistration,
     action: (activation: TWidgetActivation) => actionListener?.(activation),
+    listenerCounts: () => ({
+      authored: authoredListeners.size,
+      editor: editorListeners.size,
+      portal: portalListeners.size,
+      shell: shellListeners.size,
+    }),
+    setEditorSelection(selectedNodeIds: readonly string[], focusedNodeId: string | null) {
+      editorState = { selectedNodeIds, focusedNodeId };
+      for (const listener of [...editorListeners]) listener();
+    },
+    setPortalState(next: Pick<TPortalState, 'visible' | 'geometry'>) {
+      const previous = portalState;
+      portalState = Object.freeze({ ...portalState, ...next });
+      for (const listener of [...portalListeners]) listener(portalState);
+      if (previous.visible !== portalState.visible) {
+        portalRegistration?.onVisibilityChange?.(portalState.visible);
+      }
+      if (previous.geometry !== portalState.geometry && portalState.geometry !== null) {
+        portalRegistration?.onGeometryChange?.(portalState.geometry);
+      }
+    },
+    setShell(next: typeof shellState) {
+      shellState = next;
+      for (const listener of [...shellListeners]) listener();
+    },
     setSceneNodes(nodes: readonly TSceneNode[]) {
       sceneNodes = [...nodes];
     },
@@ -260,6 +350,132 @@ describe('Canvas extension bridge', () => {
     expect(test.unregisterPortal).toHaveBeenCalledOnce();
     await test.bridge.dispose();
     expect(cleanup).toHaveBeenCalledOnce();
+  });
+
+  test('awaits deferred mount settlement and asynchronous cleanup during bridge disposal', async () => {
+    const test = harness();
+    let resolveMount!: (cleanup: () => Promise<void>) => void;
+    let resolveCleanup!: () => void;
+    const cleaned = vi.fn();
+    test.bridge.context.widgets.register({
+      id: 'deferred-widget',
+      match: () => true,
+      mount: () => new Promise((resolve) => { resolveMount = resolve; }),
+    });
+    const mounting = test.mount(document.createElement('div'));
+    let disposed = false;
+    const disposal = test.bridge.dispose().then(() => { disposed = true; });
+    await Promise.resolve();
+    expect(disposed).toBe(false);
+
+    resolveMount(async () => {
+      await new Promise<void>((resolve) => { resolveCleanup = resolve; });
+      cleaned();
+    });
+    await mounting;
+    await Promise.resolve();
+    expect(disposed).toBe(false);
+    resolveCleanup();
+    await disposal;
+    expect(cleaned).toHaveBeenCalledOnce();
+  });
+
+  test('projects coalesced renderer-neutral scheduling and cleans every subscription', async () => {
+    const test = harness();
+    const schedulingChanges = vi.fn();
+    const unregister = test.bridge.context.widgets.register({
+      id: 'scheduled-widget',
+      match: () => true,
+      mount(args) {
+        expect(args.scheduling.current()).toEqual({
+          eligible: true,
+          visible: true,
+          distance: 0,
+          priority: 1,
+          occlusion: 0,
+        });
+        args.scheduling.subscribe(schedulingChanges);
+      },
+    });
+    await test.mount(document.createElement('div'));
+
+    test.setEditorSelection(['widget-a'], null);
+    expect(schedulingChanges).toHaveBeenLastCalledWith(expect.objectContaining({
+      eligible: true,
+      visible: true,
+      priority: 2,
+    }));
+    test.setEditorSelection(['widget-a'], 'widget-a');
+    expect(schedulingChanges).toHaveBeenLastCalledWith(expect.objectContaining({ priority: 3 }));
+    const focusedCallCount = schedulingChanges.mock.calls.length;
+    test.setShell({ kind: 'contained-widget', widgetId: 'widget-a' });
+    expect(schedulingChanges).toHaveBeenCalledTimes(focusedCallCount);
+    test.setShell({ kind: 'maximized-widget', widgetId: 'widget-a' });
+    expect(schedulingChanges).toHaveBeenLastCalledWith(expect.objectContaining({ priority: 4 }));
+
+    test.publish(fnCanvasContractNodeToCangine({ ...widget(), collapsed: true }));
+    expect(schedulingChanges).toHaveBeenLastCalledWith({
+      eligible: false,
+      visible: false,
+      distance: 0,
+      priority: 0,
+      occlusion: 1,
+    });
+    test.publish(fnCanvasContractNodeToCangine(widget()));
+    test.setEditorSelection([], null);
+    test.setShell({ kind: 'canvas', widgetId: null });
+    test.setPortalState({
+      visible: false,
+      geometry: portalGeometry({
+        minX: 2_000_000,
+        minY: 2_000_000,
+        maxX: 2_000_360,
+        maxY: 2_000_280,
+      }),
+    });
+    expect(schedulingChanges).toHaveBeenLastCalledWith({
+      eligible: false,
+      visible: false,
+      distance: 1_000_000,
+      priority: 0,
+      occlusion: 1,
+    });
+    test.setEditorSelection(['widget-a'], null);
+    expect(schedulingChanges).toHaveBeenLastCalledWith({
+      eligible: true,
+      visible: false,
+      distance: 1_000_000,
+      priority: 2,
+      occlusion: 1,
+    });
+    test.setEditorSelection([], null);
+    test.setPortalState({
+      visible: true,
+      geometry: portalGeometry({ minX: 700, minY: 100, maxX: 900, maxY: 300 }),
+    });
+    expect(schedulingChanges).toHaveBeenLastCalledWith({
+      eligible: true,
+      visible: true,
+      distance: 0,
+      priority: 1,
+      occlusion: 0.5,
+    });
+
+    const callCount = schedulingChanges.mock.calls.length;
+    test.setPortalState({
+      visible: true,
+      geometry: portalGeometry({ minX: 700, minY: 100, maxX: 900, maxY: 300 }),
+    });
+    // A distinct Cangine geometry image with the same bounded projection does
+    // not wake the application scheduler again.
+    expect(schedulingChanges).toHaveBeenCalledTimes(callCount);
+
+    unregister();
+    test.setEditorSelection(['widget-a'], 'widget-a');
+    expect(schedulingChanges).toHaveBeenCalledTimes(callCount);
+    expect(test.listenerCounts()).toEqual({ authored: 1, editor: 1, portal: 1, shell: 1 });
+    await test.bridge.dispose();
+    expect(test.listenerCounts()).toEqual({ authored: 0, editor: 0, portal: 0, shell: 0 });
   });
 
   test('projects titlebar actions, node updates, and cancellable activations', async () => {
