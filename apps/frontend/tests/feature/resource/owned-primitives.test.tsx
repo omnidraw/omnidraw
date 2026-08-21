@@ -177,6 +177,44 @@ describe("owned resource primitives", () => {
     await vi.waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
+  test("keeps focus when reactive editor state changes while a dialog stays open", async () => {
+    const [editor, setEditor] = createSignal<{ key: string; value: string } | null>(null);
+    mount(() => <>
+      <button onClick={() => setEditor({ key: "settings", value: "{}" })}>Open value</button>
+      <Dialog.Root open={editor() !== null} onOpenChange={(open) => { if (!open) setEditor(null); }}>
+        <Dialog.Portal>
+          <Dialog.Overlay />
+          <Dialog.Content>
+            <Dialog.Title>Edit value</Dialog.Title>
+            <Dialog.Description>Update the resource value.</Dialog.Description>
+            <TextField.Root value={editor()?.key ?? ""} onChange={(key) => setEditor((current) => current === null ? null : { ...current, key })}>
+              <TextField.Label>Key</TextField.Label>
+              <TextField.Input />
+            </TextField.Root>
+            <TextField.Root value={editor()?.value ?? ""} onChange={(value) => setEditor((current) => current === null ? null : { ...current, value })}>
+              <TextField.Label>JSON value</TextField.Label>
+              <TextField.TextArea />
+            </TextField.Root>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+    </>);
+
+    document.body.querySelector<HTMLButtonElement>("button")!.click();
+    const textarea = await vi.waitFor(() => {
+      const value = document.body.querySelector<HTMLTextAreaElement>("textarea");
+      expect(value).not.toBeNull();
+      return value!;
+    });
+    textarea.focus();
+    textarea.value = '{"enabled":true}';
+    textarea.dispatchEvent(new InputEvent("input", { bubbles: true, data: "e", inputType: "insertText" }));
+    await settleSolidUpdate();
+
+    expect(editor()?.value).toBe('{"enabled":true}');
+    expect(document.activeElement).toBe(textarea);
+  });
+
   test("only the topmost modal owns focus and nested close restores its parent scope", async () => {
     const [outerOpen, setOuterOpen] = createSignal(false);
     const [innerOpen, setInnerOpen] = createSignal(false);
@@ -450,12 +488,18 @@ describe("owned resource primitives", () => {
       return document.getElementById(label.htmlFor) as HTMLInputElement;
     };
     const tableName = inputFor("Table name");
+    tableName.focus();
     tableName.value = "events";
     tableName.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    await settleSolidUpdate();
+    expect(document.activeElement).toBe(tableName);
+
     const columnName = inputFor("Initial column name");
+    columnName.focus();
     columnName.value = "event_id";
     columnName.dispatchEvent(new InputEvent("input", { bubbles: true }));
     await settleSolidUpdate();
+    expect(document.activeElement).toBe(columnName);
 
     [...dialog.querySelectorAll<HTMLButtonElement>('button[type="submit"]')][0]!.click();
     expect(onSubmit).toHaveBeenCalledWith({

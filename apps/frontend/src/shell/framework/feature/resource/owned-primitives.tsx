@@ -4,6 +4,7 @@ import {
   Show,
   createContext,
   createEffect,
+  createMemo,
   createSignal,
   createUniqueId,
   omit,
@@ -247,23 +248,24 @@ const OwnedDialogRoot: Component<TDialogRootProps> = (props) => {
   let content: HTMLElement | undefined;
   const titleId = createUniqueId();
   const descriptionId = createUniqueId();
+  const open = createMemo(() => props.open);
   const context: TDialogContext = {
     content: () => content,
     descriptionId,
     onOpenChange: (open) => props.onOpenChange(open),
-    open: () => props.open,
+    open,
     role: () => props.role ?? "dialog",
     setContent: (element) => { content = element; },
     titleId,
   };
 
   createEffect(
-    () => props.open ? props.onOpenChange : null,
-    (onOpenChange) => {
-      if (onOpenChange === null) return;
+    open,
+    (open) => {
+      if (!open) return;
       return activateModalFocusScope({
         content: () => content,
-        onEscape: () => onOpenChange(false),
+        onEscape: () => props.onOpenChange(false),
         ownerDocument: content?.ownerDocument ?? document,
       });
     },

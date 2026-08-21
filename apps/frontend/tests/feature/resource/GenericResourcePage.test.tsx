@@ -53,7 +53,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-describe("generic resource secret reveal", () => {
+describe("generic resource page", () => {
   test("checks the injected owner document before exposing a secret", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(document.visibilityState).toBe("visible");
@@ -139,6 +139,69 @@ describe("generic resource secret reveal", () => {
     expect(runtime.fork).not.toHaveBeenCalled();
     expect(warn.mock.calls.flat().map(String).join("\n")).not.toMatch(/STRICT_READ_UNTRACKED|REACTIVE_WRITE|REACTIVITY_HALTED/);
     warn.mockRestore();
+  });
+
+  test.each([
+    { kind: "kv" as const, addLabel: "Add value", keyLabel: "Key", valueLabel: "JSON value", values: ["1", "12"] },
+    { kind: "secretStore" as const, addLabel: "Add secret", keyLabel: "Secret name", valueLabel: "Secret value", values: ["s", "se"] },
+  ])("keeps focus in $kind entry fields across reactive input updates", async ({ kind, addLabel, keyLabel, valueLabel, values }) => {
+    const safeRequest = vi.fn((path: string) => {
+      if (path !== "resource.resources.data") throw new Error(`Unexpected request: ${path}`);
+      return Promise.resolve([null, kind === "kv"
+        ? { kind: "kv" as const, entries: [], nextCursor: null }
+        : { kind: "secretStore" as const, entries: [], nextCursor: null }] as const);
+    });
+    const runtime = {
+      ownerWindow: window,
+      ownerDocument: document,
+      api: { safeRequest },
+      fork: vi.fn(() => () => undefined),
+      store: { set: vi.fn() },
+      catalogInvalidation: { invalidate: vi.fn() },
+    } as unknown as TFrontendRuntime;
+    const host = document.createElement("div");
+    document.body.append(host);
+    dispose = render(() => (
+      <FrontendRuntimeProvider runtime={runtime}>
+        <GenericResourcePage resource={{
+          id: `${kind}-resource`,
+          kind,
+          name: `${kind} resource`,
+          status: "ready",
+          createdAtSec: "1",
+          updatedAtSec: "2",
+        }} />
+      </FrontendRuntimeProvider>
+    ), host);
+
+    const add = [...host.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.trim() === addLabel)!;
+    add.click();
+    const dialog = await vi.waitFor(() => {
+      const value = document.body.querySelector<HTMLElement>('[role="dialog"]');
+      expect(value).not.toBeNull();
+      return value!;
+    });
+    const fieldFor = (labelText: string): HTMLInputElement | HTMLTextAreaElement => {
+      const label = [...dialog.querySelectorAll<HTMLLabelElement>("label")]
+        .find((candidate) => candidate.textContent?.trim() === labelText)!;
+      return document.getElementById(label.htmlFor) as HTMLInputElement | HTMLTextAreaElement;
+    };
+    const keyField = fieldFor(keyLabel);
+    keyField.focus();
+    keyField.value = "entry";
+    keyField.dispatchEvent(new InputEvent("input", { bubbles: true, data: "e", inputType: "insertText" }));
+    await settleSolidUpdate();
+    expect(document.activeElement).toBe(keyField);
+
+    const valueField = fieldFor(valueLabel);
+    valueField.focus();
+    for (const value of values) {
+      valueField.value = value;
+      valueField.dispatchEvent(new InputEvent("input", { bubbles: true, data: value.at(-1), inputType: "insertText" }));
+      await settleSolidUpdate();
+      expect(document.activeElement).toBe(valueField);
+    }
   });
 
   test("ignores a rename completion after routing from resource A to B", async () => {

@@ -1,5 +1,5 @@
 import { Portal } from "@solidjs/web";
-import { createEffect, createSignal, createUniqueId, onCleanup, Show, type Component } from "solid-js";
+import { createEffect, createMemo, createSignal, createUniqueId, onCleanup, Show, type Component } from "solid-js";
 import { activateModalFocusScope } from "../../../components/ui/modal-focus-scope";
 import styles from "./SidebarDialog.module.css";
 
@@ -21,6 +21,7 @@ export const CreateResourceDialog: Component<CreateResourceDialogProps> = (props
   const [name, setName] = createSignal("");
   const [error, setError] = createSignal("");
   const [submitting, setSubmitting] = createSignal(false);
+  const open = createMemo(() => props.open);
   const titleId = createUniqueId();
   const descriptionId = createUniqueId();
   const kindId = createUniqueId();
@@ -32,7 +33,7 @@ export const CreateResourceDialog: Component<CreateResourceDialogProps> = (props
   let openGeneration = 0;
 
   createEffect(
-    () => props.open,
+    open,
     (open) => {
       openGeneration += 1;
       submitInFlight = false;
@@ -50,13 +51,13 @@ export const CreateResourceDialog: Component<CreateResourceDialogProps> = (props
   });
 
   createEffect(
-    () => props.open ? props.onOpenChange : null,
-    (onOpenChange) => {
-      if (onOpenChange === null) return;
+    open,
+    (open) => {
+      if (!open) return;
       return activateModalFocusScope({
         content: () => content,
         initialFocus: () => nameInput,
-        onEscape: () => onOpenChange(false),
+        onEscape: () => props.onOpenChange(false),
         ownerDocument: content?.ownerDocument ?? document,
       });
     },
@@ -89,7 +90,7 @@ export const CreateResourceDialog: Component<CreateResourceDialogProps> = (props
   };
 
   return (
-    <Show when={props.open}>
+    <Show when={open()}>
       <Portal>
         <div
           class={styles.overlay}
