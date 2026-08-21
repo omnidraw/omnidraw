@@ -39,6 +39,26 @@ function rect(id: string): TSceneNode {
   };
 }
 
+function connector(id: string, fromId: string, toId: string): TSceneNode {
+  return {
+    id,
+    parentId: null,
+    orderKey: id,
+    kind: 'connector',
+    transform,
+    from: { type: 'node', nodeId: fromId, anchor: 'right' },
+    to: { type: 'node', nodeId: toId, anchor: 'left' },
+    routing: { type: 'straight' },
+    stroke: {
+      width: 2,
+      paint: {
+        type: 'solid',
+        color: { space: 'srgb', r: 0, g: 0, b: 0, a: 1 },
+      },
+    },
+  };
+}
+
 function image(id: string, resourceId: string, url: string): TSceneNode {
   return {
     id,
@@ -298,6 +318,26 @@ describe('CanvasService', () => {
     await expect(canvas.execute(patchPosition('stale-x', 'x', 0, 30)))
       .rejects.toMatchObject({ code: 'CONFLICT' });
     expect(store.queryFilters).toEqual(['ids']);
+  });
+
+  test('accepts a connector attached to existing canvas nodes', async () => {
+    const store = new MemoryCanvasStore();
+    store.createCanvas('canvas-a', [rect('shape-a'), rect('shape-b')]);
+    const canvas = service(store);
+
+    const result = await canvas.execute(insertCommand(
+      'connector-a',
+      'canvas-a',
+      0,
+      connector('connector-a', 'shape-a', 'shape-b'),
+    ));
+
+    expect(result.changedItems[0]?.item).toMatchObject({
+      id: 'connector-a',
+      kind: 'connector',
+      from: { type: 'node', nodeId: 'shape-a' },
+      to: { type: 'node', nodeId: 'shape-b' },
+    });
   });
 
   test('keeps widget identity stable and unique on one canvas', async () => {

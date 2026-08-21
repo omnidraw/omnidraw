@@ -128,9 +128,16 @@ function isStoreNotFound(error: unknown): boolean {
   );
 }
 
-function clipNodeId(item: TSceneNode): TCanvasItemId | null {
-  const clip = item.clip;
-  return clip?.type === 'node' ? clip.nodeId : null;
+function referencedNodeIds(item: TSceneNode): readonly TCanvasItemId[] {
+  const references: TCanvasItemId[] = [];
+  if (item.clip?.type === 'node') references.push(item.clip.nodeId);
+  if (item.kind === 'connector') {
+    if (item.from.type === 'node') references.push(item.from.nodeId);
+    if (item.to.type === 'node') references.push(item.to.nodeId);
+    references.push(...(item.avoidNodeIds ?? []));
+    if (item.labelNodeId !== undefined) references.push(item.labelNodeId);
+  }
+  return references;
 }
 
 export class CanvasService implements ICanvasService {
@@ -662,8 +669,9 @@ export class CanvasService implements ICanvasService {
         if (item.parentId !== null && !closure.has(item.parentId)) {
           required.add(item.parentId);
         }
-        const clipId = clipNodeId(item);
-        if (clipId !== null && !closure.has(clipId)) required.add(clipId);
+        for (const referenceId of referencedNodeIds(item)) {
+          if (!closure.has(referenceId)) required.add(referenceId);
+        }
       }
       if (required.size === 0) break;
       for (const id of required) context.authorityIds.add(id);

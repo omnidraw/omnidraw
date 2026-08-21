@@ -508,9 +508,9 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S149](s/S149.md) - AI Chat: simplify tool schemas for strict providers
 - [x]: [S150](s/S150.md) - widgets: make selected text copyable by default
 - [x]: [S151](s/S151.md) - widgets: append new canvas placements above existing content
-- [ ]: [S152](s/S152.md) - canvas: remove the monolithic startup barrier for immediate interaction
-- [ ]: [S153](s/S153.md) - frontend/canvas: hard-cut from Solid 1 to Solid 2
-- [ ]: [S154](s/S154.md) - toolchain: update to Bun 1.4 and simplify build/test workflows
+- [x]: [S152](s/S152.md) - canvas: remove the monolithic startup barrier for immediate interaction
+- [x]: [S153](s/S153.md) - frontend/canvas: hard-cut from Solid 1 to Solid 2
+- [x]: [S154](s/S154.md) - toolchain: update to Bun 1.4 and simplify build/test workflows
 - [ ]: [S155](s/S155.md) - frontend: restore Kobalte primitives on Solid 2
 
 ## E xplorations
