@@ -1455,6 +1455,10 @@ async function persistAiChatStateAcrossReload(
   const selectedModelIdentity = record(aiChatPayload(canvasCommandWidgetNode(modelCommand)!).model);
   assert.deepEqual(selectedModelIdentity, { provider: FAKE_PROVIDER_ID, modelId: FAKE_MODEL_ID });
 
+  // A durable Canvas update can settle while the credential-free chat is back
+  // on its settings view. Re-enter chat rather than force-clicking its hidden composer.
+  await showChatComposer(page);
+  await modelButton.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
   canvasExecuteBefore = (await readRpcRequests(page, 'canvas.execute')).length;
   await modelButton.click();
   await page.getByRole('group', { name: 'AI model settings' })
@@ -1478,6 +1482,7 @@ async function persistAiChatStateAcrossReload(
     },
   });
 
+  await showChatComposer(page);
   const policyUpdateBefore = (await readRpcRequests(page, 'agent.chat.approvalPolicy.update')).length;
   canvasExecuteBefore = (await readRpcRequests(page, 'canvas.execute')).length;
   const approvalButton = page.getByRole('button', {
