@@ -187,6 +187,26 @@ afterEach(() => {
 });
 
 describe('Canvas host contributions', () => {
+  test('contains Canvas-owned layers in one application stacking context', async () => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    dispose = render(() => Canvas({
+      canvas: { id: 'canvas-1' },
+      hostScopeKey: 'test-scope',
+      dependencies: dependencies(),
+    }), host);
+
+    await vi.waitFor(() => {
+      expect(runtimeMocks.runtime.bootEffect).toHaveBeenCalledOnce();
+    });
+    const canvasRoot = host.querySelector<HTMLDivElement>(
+      '.omnidraw-canvas-host',
+    );
+    expect(canvasRoot).not.toBeNull();
+    expect(canvasRoot?.style.position).toBe('relative');
+    expect(canvasRoot?.style.isolation).toBe('isolate');
+  });
+
   test('releases an active Space pan without Solid diagnostics on root disposal', async () => {
     expect(DEV).toBeDefined();
     const host = document.createElement('div');

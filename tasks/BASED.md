@@ -230,7 +230,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B116](b/B116.md) - Widget lifecycle: distinguish runtime loading from Preview building
 - [x]: [B117](b/B117.md) - CI: AI Chat preference acceptance clicks a hidden composer after durable updates
 - [x]: [B118](b/B118.md) - resource forms: keep focus while editing dialog values
-- [ ]: [B119](b/B119.md) - canvas selection overlay escapes above application dialogs
+- [x]: [B119](b/B119.md) - canvas selection overlay escapes above application dialogs
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

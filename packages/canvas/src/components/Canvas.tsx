@@ -908,6 +908,7 @@ export function Canvas(props: TCanvasProps) {
       ]}
       style={{
         position: 'relative',
+        isolation: 'isolate',
         width: '100%',
         height: '100%',
         overflow: 'hidden',

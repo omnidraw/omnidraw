@@ -1738,6 +1738,131 @@ async function placeShortAiChatWidget(page: Page): Promise<Readonly<{
   });
 }
 
+type TSelectionSurfaceEvidence = Readonly<{
+  checksum: number;
+  paintedPixels: number;
+}>;
+
+async function readSelectionSurfaceEvidence(page: Page): Promise<TSelectionSurfaceEvidence> {
+  return await page.locator(
+    'canvas[data-vibecanvas-surface="engine-transform-overlay"]',
+  ).evaluate((surface: HTMLCanvasElement) => {
+    const context = surface.getContext('2d', { willReadFrequently: true });
+    if (context === null) {
+      throw new Error('The Canvas transformer surface has no 2D context.');
+    }
+    const pixels = context.getImageData(0, 0, surface.width, surface.height).data;
+    let checksum = 2_166_136_261;
+    let paintedPixels = 0;
+    for (let offset = 0; offset < pixels.length; offset += 4) {
+      const alpha = pixels[offset + 3]!;
+      if (alpha === 0) continue;
+      paintedPixels += 1;
+      checksum = Math.imul(checksum ^ pixels[offset]!, 16_777_619) >>> 0;
+      checksum = Math.imul(checksum ^ pixels[offset + 1]!, 16_777_619) >>> 0;
+      checksum = Math.imul(checksum ^ pixels[offset + 2]!, 16_777_619) >>> 0;
+      checksum = Math.imul(checksum ^ alpha, 16_777_619) >>> 0;
+    }
+    return { checksum, paintedPixels };
+  });
+}
+
+async function exerciseSelectedCanvasDialogOcclusion(
+  page: Page,
+  widgetId: string,
+): Promise<void> {
+  const canvasRoot = page.locator('.omnidraw-canvas-host');
+  const widgetShell = page.locator(
+    `[data-vibecanvas-widget-shell="${widgetId}"]`,
+  );
+  const titlebar = widgetShell.locator('[data-vibecanvas-widget-titlebar]');
+  await titlebar.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+  await titlebar.click({ position: { x: 120, y: 15 } });
+
+  const selected = await waitForBrowserState<TSelectionSurfaceEvidence>({
+    label: 'the selected AI Chat transformer to paint',
+    read: () => readSelectionSurfaceEvidence(page),
+    ready: (evidence) => evidence.paintedPixels > 0,
+  });
+  await canvasRoot.evaluate((root) => {
+    root.dataset.browserAcceptanceStackingRoot = 'selected-dialog';
+  });
+
+  await page.getByRole('button', { name: 'Add resource' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Create resource' });
+  await dialog.waitFor({ state: 'visible', timeout: ROUTE_TIMEOUT_MS });
+
+  const modalCoverage = await page.evaluate(({ selectedWidgetId }) => {
+    const root = document.querySelector<HTMLElement>('.omnidraw-canvas-host');
+    const selection = document.querySelector<HTMLCanvasElement>(
+      'canvas[data-vibecanvas-surface="engine-transform-overlay"]',
+    );
+    const widget = document.querySelector<HTMLElement>(
+      `[data-vibecanvas-portal-id="omnidraw:widget:${selectedWidgetId}"]`,
+    );
+    const content = document.querySelector<HTMLElement>('[role="dialog"]');
+    const overlay = content?.previousElementSibling;
+    const rootBounds = root?.getBoundingClientRect();
+    const left = Math.max(0, rootBounds?.left ?? 0);
+    const right = Math.min(window.innerWidth, rootBounds?.right ?? 0);
+    const top = Math.max(0, rootBounds?.top ?? 0);
+    const bottom = Math.min(window.innerHeight, rootBounds?.bottom ?? 0);
+    const x = left + Math.max(0, right - left) / 2;
+    const y = top + Math.max(0, bottom - top) / 2;
+    const hitStack = document.elementsFromPoint(x, y);
+    const applicationBandIndex = hitStack.findIndex((element) => (
+      element === overlay || (content?.contains(element) ?? false)
+    ));
+    const canvasBandIndex = hitStack.findIndex((element) => (
+      root?.contains(element) ?? false
+    ));
+    return {
+      canvasRootIdentity: root?.dataset.browserAcceptanceStackingRoot ?? null,
+      contentZIndex: content === null ? null : getComputedStyle(content).zIndex,
+      applicationPortalAboveCanvas: applicationBandIndex >= 0
+        && (canvasBandIndex < 0 || applicationBandIndex < canvasBandIndex),
+      overlayZIndex: overlay instanceof HTMLElement
+        ? getComputedStyle(overlay).zIndex
+        : null,
+      rootContainsSelection: root?.contains(selection) ?? false,
+      rootContainsWidget: root?.contains(widget) ?? false,
+      rootIsolation: root === null ? null : getComputedStyle(root).isolation,
+      selectionZIndex: selection === null ? null : getComputedStyle(selection).zIndex,
+    };
+  }, { selectedWidgetId: widgetId });
+  assert.deepEqual(modalCoverage, {
+    applicationPortalAboveCanvas: true,
+    canvasRootIdentity: 'selected-dialog',
+    contentZIndex: '50',
+    overlayZIndex: '40',
+    rootContainsSelection: true,
+    rootContainsWidget: true,
+    rootIsolation: 'isolate',
+    selectionZIndex: '2147483647',
+  });
+  assert.deepEqual(
+    await readSelectionSurfaceEvidence(page),
+    selected,
+    'Opening the application dialog changed or cleared the selected transformer.',
+  );
+
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await dialog.waitFor({ state: 'hidden', timeout: ROUTE_TIMEOUT_MS });
+  assert.equal(
+    await canvasRoot.getAttribute('data-browser-acceptance-stacking-root'),
+    'selected-dialog',
+    'Closing the application dialog remounted the Canvas runtime root.',
+  );
+  assert.deepEqual(
+    await readSelectionSurfaceEvidence(page),
+    selected,
+    'Closing the application dialog did not reveal the same selected transformer.',
+  );
+  await canvasRoot.evaluate((root) => {
+    delete root.dataset.browserAcceptanceStackingRoot;
+  });
+}
+
 function aiChatPayload(node: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
   return record(canvasWidgetExtension(node).payload);
 }
@@ -2906,6 +3031,9 @@ async function runBrowserSuite(
 
     console.log('[browser:live] fresh AI Chat widget short-drag portal and connection');
     const initialChat = await placeShortAiChatWidget(page);
+
+    console.log('[browser:live] selected Canvas layers stay below shared application dialogs');
+    await exerciseSelectedCanvasDialogOcclusion(page, initialChat.widgetId);
 
     console.log('[browser:live] New Chat, model, and thinking persistence across reload');
     const persistedChat = await persistAiChatStateAcrossReload(page, initialChat);
