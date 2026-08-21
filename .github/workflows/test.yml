@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          lfs: true
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -65,3 +67,48 @@ jobs:
             **/*.snap
           if-no-files-found: ignore
           retention-days: 1
+
+  source-release:
+    name: Source release (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    steps:
+      - name: Checkout clean source release with Git LFS
+        uses: actions/checkout@v5
+        with:
+          lfs: true
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.0"
+
+      - name: Verify clone and lockfile policy
+        shell: bash
+        run: |
+          anonymous_head="$(GIT_TERMINAL_PROMPT=0 git -c credential.helper= ls-remote https://github.com/omnidraw/omnidraw.git HEAD)"
+          test -n "$anonymous_head"
+          git lfs fsck
+          git check-ignore -q .npmrc
+          if git ls-files --error-unmatch .npmrc >/dev/null 2>&1; then
+            echo '.npmrc must remain untracked' >&2
+            exit 1
+          fi
+          test ! -e .npmrc
+          test ! -e .omnidraw
+          bun run check:published-lockfile
+
+      - name: Install from the frozen public lockfile
+        run: bun install --frozen-lockfile
+
+      - name: Build the complete source release
+        run: bun run build
+
+      - name: Start and probe the already-built application
+        run: bun run test:source-release

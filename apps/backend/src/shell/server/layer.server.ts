@@ -5,6 +5,7 @@ import {
   HttpServerResponse,
 } from 'effect/unstable/http';
 import type { ICliConfig } from '../cli/config';
+import { SOURCE_SERVER_HOST } from '../cli/build-config';
 import { handleHttpRequest } from '../http/http';
 import {
   BackendConfig,
@@ -65,7 +66,7 @@ export function layerBackendServer(config: Pick<ICliConfig, 'port'>) {
   const routes = Layer.merge(rpc, layerBoundedHttp);
   return HttpRouter.serve(routes).pipe(
     Layer.provide(BunHttpServer.layer({
-      hostname: '127.0.0.1',
+      hostname: SOURCE_SERVER_HOST,
       port: config.port,
       websocket: {
         closeOnBackpressureLimit: true,

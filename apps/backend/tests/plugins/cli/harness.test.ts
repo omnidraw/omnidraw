@@ -41,6 +41,8 @@ describe('CLI test harness', () => {
     expect(result.stdout).not.toContain('uninstall');
     expect(result.stdout).toContain('--data-dir <path>');
     expect(result.stdout).toContain('OMNIDRAW_HOME');
+    expect(result.stdout).toContain('default: 7496');
+    expect(result.stdout).toContain('serve --port 8080');
     expect(result.stdout).not.toContain('--db');
     expect(result.stdout).not.toContain('Canvas subcommands:');
     expect(result.stdout).toContain('omnidraw canvas list --json');

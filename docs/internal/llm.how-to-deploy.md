@@ -10,6 +10,37 @@ Merging to `main` does not publish npm packages. Versioned `@omnidraw/*`
 libraries are built and published manually from a maintainer machine. The two
 apps are not published, and CI verifies releases without publishing them.
 
+## Source application release
+
+The supported application release is the source checkout itself. Before any
+release announcement or package publication, verify that an unauthenticated
+repository query succeeds:
+
+```sh
+git ls-remote https://github.com/omnidraw/omnidraw.git HEAD
+```
+
+Then qualify the documented Linux and macOS workflow from a clean clone with
+Git LFS enabled:
+
+```sh
+git clone https://github.com/omnidraw/omnidraw.git
+cd omnidraw
+bun install --frozen-lockfile
+bun run build
+bun run start
+```
+
+`bun run start` launches the TypeScript backend with `NODE_ENV=production` and
+serves only the already-built frontend. It must not build or mutate generated
+outputs. The clean-source CI matrix probes the default port `7496`, a port
+override, HTTP health and SPA routes, and the application WebSocket before
+checking graceful shutdown and byte-for-byte build stability.
+
+Do not publish packages or release instructions while the anonymous repository
+query fails. The five public manifests and README all use this one canonical
+repository identity.
+
 ## Library packages
 
 ### Source manifests versus public packages

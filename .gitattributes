@@ -68,3 +68,12 @@ docs/**/*.[oO][gG][vV] filter=lfs diff=lfs merge=lfs -text
 docs/**/*.[vV][oO][bB] filter=lfs diff=lfs merge=lfs -text
 docs/**/*.[wW][eE][bB][mM] filter=lfs diff=lfs merge=lfs -text
 docs/**/*.[wW][mM][vV] filter=lfs diff=lfs merge=lfs -text
+
+# Small media already stored as ordinary Git blobs stay outside LFS. Keeping
+# these exceptions explicit makes `git lfs fsck` agree with repository history.
+docs/internal/screens/assets/19-canvas-preview-manifest-resource-reload.webp -filter -diff -merge
+docs/internal/screens/assets/19-canvas-preview-manifest-resource-failure.webp -filter -diff -merge
+docs/internal/screens/assets/19-canvas-published-manifest-resource.webp -filter -diff -merge
+docs/internal/screens/assets/19-canvas-published-manifest-resource-reload.webp -filter -diff -merge
+docs/internal/screens/assets/19-canvas-preview-manifest-resource.webp -filter -diff -merge
+tasks/b/B111.png -filter -diff -merge

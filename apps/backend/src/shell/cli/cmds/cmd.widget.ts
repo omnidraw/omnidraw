@@ -23,7 +23,7 @@ const MAX_SCREENSHOT_BYTES = 16 * 1_024 * 1_024;
 const WIDGET_SUBCOMMAND_SET = new Set<string>(WIDGET_SUBCOMMANDS);
 
 const COMMON_HELP = `Common options:
-  --port <number>              Running server RPC port (default: 3000)
+  --port <number>              Running server RPC port (default: 7496)
   --data-dir <path>            Omnidraw home selection (default: ~/.omnidraw; env: OMNIDRAW_HOME)
   --json                       Emit one machine-readable result or error
   --help, -h                   Show this subcommand help`;

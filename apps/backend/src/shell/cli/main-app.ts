@@ -2,7 +2,11 @@ import { execFile } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildCliConfig, SOURCE_APPLICATION_VERSION } from './build-config';
+import {
+  buildCliConfig,
+  SOURCE_APPLICATION_VERSION,
+  sourceApplicationUrl,
+} from './build-config';
 import { fnBuildHomePreflightError } from '../../core/cli/fn.home-preflight-error';
 import { CliArgvError, parseCliArgv } from './parse-argv';
 import { runCliCommand } from './CliPlugin';
@@ -11,6 +15,10 @@ import { createBackendRuntime } from '../runtime/managed-runtime';
 import { LiveEventPublisher } from '../runtime/service.live-mechanics';
 import { setupSignals } from '../runtime/setup-signals';
 import { checkWidgetPrerequisites } from './widget-prerequisites/check-widget-prerequisites';
+import {
+  assertSourceReleaseBuild,
+  sourceReleaseBuildErrorMessage,
+} from '../release/source-release-build';
 
 export const SOURCE_REPOSITORY_ROOT = fileURLToPath(
   new URL('../../../../../', import.meta.url),
@@ -46,6 +54,16 @@ export async function runCliMain() {
   if (config.command !== 'serve' || config.helpRequested) {
     await runCliCommand(config);
     return;
+  }
+
+  if (!config.dev) {
+    try {
+      await assertSourceReleaseBuild(SOURCE_REPOSITORY_ROOT);
+    } catch (error) {
+      console.error(sourceReleaseBuildErrorMessage(error));
+      process.exitCode = 1;
+      return;
+    }
   }
 
   const { preflightDbServiceDatabase } = await import(
@@ -87,4 +105,5 @@ export async function runCliMain() {
   });
 
   await runtime.context();
+  console.log(`Omnidraw is ready at ${sourceApplicationUrl(config.port)}`);
 }

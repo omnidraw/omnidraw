@@ -15,7 +15,7 @@ Commands:
   widget    Verify widget drafts through the running server
 
 Options:
-  --port <number>      Port for the source-run server (default: 3000)
+  --port <number>      Port for the source-run server (default: 7496)
   --data-dir <path>    Omnidraw home (default: ~/.omnidraw; env: OMNIDRAW_HOME)
   --dry-run           Preview supported canvas mutations without applying them
   --version, -v        Print version and exit
@@ -23,7 +23,7 @@ Options:
 
 Examples:
   omnidraw
-  omnidraw serve --port 3001
+  omnidraw serve --port 8080
   omnidraw serve --data-dir ./tmp/omnidraw-home
   omnidraw canvas list --json
   omnidraw canvas query --canvas <id> --kind rect --json

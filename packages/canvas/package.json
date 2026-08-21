@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/vibecanvas/vibecanvas.git",
+    "url": "git+https://github.com/omnidraw/omnidraw.git",
     "directory": "packages/canvas"
   },
   "publishConfig": {

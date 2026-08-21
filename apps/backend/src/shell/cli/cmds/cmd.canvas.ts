@@ -98,7 +98,7 @@ Connection:
   Start the server separately with 'omnidraw serve'.
 
 Shared options:
-  --port <number>   Server port (default: 3000)
+  --port <number>   Server port (default: 7496)
   --json            Emit one machine-readable JSON result
   --dry-run         Fetch current state and print the command without executing it
   --help, -h        Show command-specific help

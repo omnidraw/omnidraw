@@ -8,10 +8,12 @@ import { parseCliArgv } from '../src/shell/cli/parse-argv';
 describe('parseCliArgv command resolution', () => {
   test('defaults to serve when no subcommand is provided', () => {
     const parsed = parseCliArgv(['bun', 'run']);
+    const config = buildCliConfig(parsed, { version: 'test' });
 
     expect(parsed.command).toBe('serve');
     expect(parsed.subcommand).toBeUndefined();
     expect(parsed.port).toBeUndefined();
+    expect(config.port).toBe(7496);
   });
 
   test('treats numeric third positional as serve port', () => {
@@ -52,11 +54,12 @@ describe('parseCliArgv command resolution', () => {
   });
 
   test('carries parsed options into buildCliConfig', () => {
-    const parsed = parseCliArgv(['bun', 'run', 'serve', '--data-dir', './tmp/omnidraw-home', '--json']);
+    const parsed = parseCliArgv(['bun', 'run', 'serve', '--port', '8080', '--data-dir', './tmp/omnidraw-home', '--json']);
     const config = buildCliConfig(parsed, { version: 'test' });
 
     expect(config.command).toBe('serve');
     expect(config.subcommand).toBeUndefined();
+    expect(config.port).toBe(8080);
     expect(config.home.homeDir).toBe(resolve(process.cwd(), './tmp/omnidraw-home'));
     expect(config.home.mainDbPath).toBe(resolve(process.cwd(), './tmp/omnidraw-home/main.db'));
     expect(config.subcommandOptions).toMatchObject({

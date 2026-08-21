@@ -4,8 +4,13 @@ import type { TCliParsedArgv } from './parse-argv';
 import { join, resolve } from 'path';
 import { homedir } from 'os';
 
-const SOURCE_SERVER_DEFAULT_PORT = 3000;
+export const SOURCE_SERVER_HOST = '127.0.0.1';
+export const SOURCE_SERVER_DEFAULT_PORT = 7496;
 export const SOURCE_APPLICATION_VERSION = '0.0.0-dev';
+
+export function sourceApplicationUrl(port: number): string {
+  return `http://${SOURCE_SERVER_HOST}:${port}/`;
+}
 
 export type TBackendBuildIdentity = Readonly<{
   version: string;

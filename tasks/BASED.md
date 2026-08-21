@@ -573,7 +573,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [D15](d/D15.md) - standardize expected semantic failures (order 5/7)
 - [x]: [D16](d/D16.md) - canvas: structured lifetime ownership and orchestration split (order 6/7)
 - [x]: [D17](d/D17.md) - measured performance and low-risk cleanup (order 7/7)
-- [ ]: [D18](d/D18.md) - release: clone, install, build, and start entirely from source
+- [/]: [D18](d/D18.md) - release: clone, install, build, and start entirely from source
 
 ## Pragmatic Code Style
 
