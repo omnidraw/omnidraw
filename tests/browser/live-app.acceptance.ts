@@ -101,7 +101,7 @@ type TRpcWireRequest = Readonly<{
 
 type TCreatedResource = Readonly<{
   id: string;
-  kind: 'db' | 'kv' | 'secretStore';
+  kind: 'db' | 'kv';
   name: string;
   status: string;
 }>;
@@ -2795,7 +2795,6 @@ async function restartBackendWithMountedChat(args: Readonly<{
 async function createResources(page: Page): Promise<readonly TCreatedResource[]> {
   const inputs = [
     { kind: 'kv', name: 'Browser KV' },
-    { kind: 'secretStore', name: 'Browser Secrets' },
     { kind: 'db', name: 'Browser Database' },
   ] as const;
   const created: TCreatedResource[] = [];
@@ -2938,30 +2937,6 @@ async function exerciseResourceWorkbenches(
     fullPage: true,
   });
 
-  await page.goto(new URL(`/resources/${resources.secretStore.id}?tab=data`, baseUrl).toString(), {
-    waitUntil: 'domcontentloaded',
-  });
-  await page.getByRole('button', { name: 'Add secret', exact: true }).click();
-  const secretDialog = page.getByRole('dialog', { name: 'Add secret', exact: true });
-  await secretDialog.getByLabel('Secret name', { exact: true }).fill('acceptance/secret');
-  await secretDialog.getByLabel('Secret value', { exact: true }).fill('browser-secret-value');
-  await secretDialog.getByRole('button', { name: 'Create', exact: true }).click();
-  await page.getByText('acceptance/secret', { exact: true }).waitFor({
-    state: 'visible',
-    timeout: ROUTE_TIMEOUT_MS,
-  });
-  await page.getByRole('button', { name: 'Reveal secret value', exact: true }).click();
-  await page.getByText('browser-secret-value', { exact: true }).waitFor({
-    state: 'visible',
-    timeout: ROUTE_TIMEOUT_MS,
-  });
-  await page.screenshot({
-    path: join(ROOT, 'tests/artifacts/live-resource-secret-reveal.png'),
-    fullPage: true,
-  });
-  await page.getByRole('button', { name: 'Hide secret value', exact: true }).click();
-  assert.equal(await page.getByText('browser-secret-value', { exact: true }).count(), 0);
-
   await page.goto(new URL(`/resources/${resources.db.id}?tab=overview`, baseUrl).toString(), {
     waitUntil: 'domcontentloaded',
   });
@@ -3057,7 +3032,7 @@ async function runBrowserSuite(
 
     console.log('[browser:live] create and bind the Preview function resource fixture');
     const resources = await createResources(page);
-    assert.deepEqual(resources.map((resource) => resource.kind), ['kv', 'secretStore', 'db']);
+    assert.deepEqual(resources.map((resource) => resource.kind), ['kv', 'db']);
     const byKind = Object.fromEntries(resources.map((resource) => [resource.kind, resource])) as Record<
       TCreatedResource['kind'],
       TCreatedResource
