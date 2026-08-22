@@ -67,7 +67,6 @@ export interface IAgentServiceConfig {
   dataPath: string;
   widgetDraftsRoot: string;
   npmUserConfigPath?: string;
-  prepareWidgetNpmDependencies?: (signal?: AbortSignal) => Promise<void>;
   /** Completes the shared widget-root rescan after an agent-owned draft change.
    * The agent catalog event is published only after this callback resolves. */
   onWidgetDraftsChanged?: () => Promise<void>;
@@ -229,7 +228,6 @@ export class AgentService implements IPublicMethods {
       platform: config.world.platform,
       createId: config.world.createId,
       npmUserConfigPath: config.npmUserConfigPath,
-      prepareNpmDependencies: config.prepareWidgetNpmDependencies,
     })
     this.#approvals = new ApprovalCoordinator({
       createId: config.world.createId,

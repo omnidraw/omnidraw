@@ -94,13 +94,8 @@ available from the public npm registry:
 - `@omnidraw/cangine@0.7.0`, published from its owning repository;
 - `@omnidraw/capsule@0.16.0`.
 
-Local Verdaccio packages do not satisfy this gate. The committed `bun.lock`
-must resolve those packages from the default public registry, not
-`http://127.0.0.1:4873`. Local `link:local` is fine on a developer machine;
-git hooks strip loopback lockfile URLs on commit and push. CI runs
-`bun run check:published-lockfile` before install and fails closed if the
-lockfile still points at loopback Verdaccio or if the exact version is
-unpublished. Check the public registry explicitly:
+The committed `bun.lock` must resolve those packages from the public npm
+registry. Check each exact version explicitly:
 
 ```sh
 npm view @omnidraw/cangine@0.7.0 version dist.integrity --registry=https://registry.npmjs.org/

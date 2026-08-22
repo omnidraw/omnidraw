@@ -1,9 +1,0 @@
-{
-  "name": "@omnidraw/local-registry-runtime",
-  "private": true,
-  "version": "0.0.0",
-  "description": "Pinned runtime installed into the host-owned Omnidraw development registry state.",
-  "dependencies": {
-    "verdaccio": "6.9.0"
-  }
-}

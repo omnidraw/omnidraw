@@ -41,7 +41,6 @@ type TWidgetWorkspaceConfig = {
   platform: NodeJS.Platform;
   createId: () => string;
   npmUserConfigPath?: string;
-  prepareNpmDependencies?: (signal?: AbortSignal) => Promise<void>;
 };
 
 type TScaffold = (args: TWidgetCreateInput & { cwd: string; name: string }) => Promise<string[]>;
@@ -66,7 +65,6 @@ export class WidgetWorkspace {
   readonly npmUserConfigPath?: string;
   readonly #platform: NodeJS.Platform;
   readonly #createId: () => string;
-  readonly #prepareNpmDependencies?: (signal?: AbortSignal) => Promise<void>;
   readonly #writeQueues = new Map<string, Promise<unknown>>();
   readonly #authoringQueues = new Map<string, Promise<unknown>>();
 
@@ -78,11 +76,6 @@ export class WidgetWorkspace {
     this.npmUserConfigPath = config.npmUserConfigPath;
     this.#platform = config.platform;
     this.#createId = config.createId;
-    this.#prepareNpmDependencies = config.prepareNpmDependencies;
-  }
-
-  prepareNpmDependencies(signal?: AbortSignal): Promise<void> {
-    return this.#prepareNpmDependencies?.(signal) ?? Promise.resolve();
   }
 
   async init(): Promise<void> {

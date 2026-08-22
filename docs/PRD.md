@@ -552,7 +552,7 @@ Small, generic pure helpers may be duplicated between frontend and backend when 
 
 Root tooling survives only when it operates across the repository:
 
-- Keep release staging, package verification, npm/local-registry support, repository dev orchestration, architecture boundaries, database verification, and CI entrypoints under `scripts/`.
+- Keep release staging, package verification, repository dev orchestration, architecture boundaries, database verification, and CI entrypoints under `scripts/`.
 - Move backend-specific commands and Preview inspection drivers under `apps/backend`.
 - Move frontend browser harnesses under `apps/frontend` or root integration tests.
 - Move packed consumers to `tests/fixtures/external-composition` and `tests/fixtures/canvas-consumer`; they remain isolated projects and are not root workspaces.
@@ -564,7 +564,7 @@ The pre-refactor script audit has this disposition:
 
 - Delete `FILES.md`, `scripts/generate-files-md.ts`, and the `generate:files` root command immediately.
 - Delete the retired portal-era `fn`/`fx`/`tx` ESLint plugin, config, Pi extension, Codex hooks, and root lint commands immediately. New Effect v4 boundary enforcement follows `llm.app-architecture.md`; it must not preserve the old fixed-two-parameter or filename-import-allowlist rules.
-- Retain cross-repository development orchestration, package staging and verification, local npm registry/linking, fresh-database correctness, load, architecture, packed-consumer, final-acceptance, and CI scripts while they protect the refactor.
+- Retain cross-repository development orchestration, package staging and verification, fresh-database correctness, load, architecture, packed-consumer, final-acceptance, and CI scripts while they protect the refactor.
 - Retain helper-app and legacy-package tests until their product assertions pass from the replacement app, conformance, or integration location. Delete each old driver in the same change that activates its replacement gate.
 - Delete the compiled Preview inspection chain only under the coverage-preserving rule in Section 13.
 

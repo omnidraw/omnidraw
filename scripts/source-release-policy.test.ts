@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import {
@@ -20,7 +21,11 @@ function trackedTextPaths(scopes: readonly string[]): string[] {
   return execFileSync('git', ['ls-files', '-z', '--', ...scopes], {
     cwd: ROOT,
     encoding: 'utf8',
-  }).split('\0').filter((path) => path !== '' && ACTIVE_TEXT_EXTENSION.test(path));
+  }).split('\0').filter((path) => (
+    path !== ''
+    && ACTIVE_TEXT_EXTENSION.test(path)
+    && existsSync(join(ROOT, path))
+  ));
 }
 
 async function joinedTrackedText(paths: readonly string[]): Promise<string> {
@@ -109,7 +114,4 @@ describe('source release policy', () => {
     ]) expect(active).not.toMatch(retired);
   });
 
-  test('keeps local npm configuration ignored', async () => {
-    expect(await text('.gitignore')).toMatch(/^\.npmrc$/m);
-  });
 });

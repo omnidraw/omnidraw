@@ -9,10 +9,10 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@omnidraw/canvas": "0.12.1",
-    "@omnidraw/canvas-contract": "0.8.0",
-    "@omnidraw/component-ai-chat": "0.3.1",
-    "@omnidraw/theme": "0.1.0",
+    "@omnidraw/canvas": "0.7.0",
+    "@omnidraw/canvas-contract": "0.7.0",
+    "@omnidraw/component-ai-chat": "0.7.0",
+    "@omnidraw/theme": "0.7.0",
     "@solidjs/signals": "2.0.0-rc.0",
     "@solidjs/web": "2.0.0-rc.0",
     "solid-js": "2.0.0-rc.0"

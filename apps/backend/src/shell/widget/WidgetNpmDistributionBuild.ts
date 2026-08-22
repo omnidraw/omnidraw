@@ -40,7 +40,6 @@ import {
   fnWidgetBuildProcessEnvironment,
 } from './fn.redact-build-output';
 import { fnBootstrapWidgetUiEntry } from './fn.widget-ui-entry';
-import { refreshMutableRegistryPackageLock } from './refresh-mutable-registry-package-lock';
 import { terminateWidgetBuildProcessTree } from './terminate-widget-build-process-tree';
 
 const DISTRIBUTION_ENTRY = 'main.js';
@@ -123,8 +122,6 @@ type TConfig = Readonly<{
   installTimeoutMs?: number;
   buildTimeoutMs?: number;
   npmUserConfigPath: string;
-  prepareNpmDependencies?: () => Promise<void>;
-  mutableRegistryUrl?: string;
   maxWarmWorkspaces?: number;
 }>;
 
@@ -275,25 +272,6 @@ function assertWorkspaceKey(workspaceKey: string): void {
   ) {
     throw new TypeError('Widget build workspace key is invalid.');
   }
-}
-
-function normalizeMutableRegistryUrl(value: string | undefined): string | undefined {
-  if (value === undefined) return undefined;
-  const url = new URL(value);
-  if (
-    url.protocol !== 'http:'
-    || url.hostname !== '127.0.0.1'
-    || url.username !== ''
-    || url.password !== ''
-    || (url.pathname !== '/' && url.pathname !== '')
-    || url.search !== ''
-    || url.hash !== ''
-  ) {
-    throw new TypeError('Widget mutable npm registry must be an unauthenticated loopback URL.');
-  }
-  if (url.port === '') url.port = '80';
-  url.pathname = '/';
-  return url.href;
 }
 
 function assertProjectPath(path: string): void {
@@ -1092,7 +1070,6 @@ export function createWidgetNpmDistributionBuild(
 ): TWidgetNpmDistributionBuild {
   const execute = config.runProcess;
   const runnerIdentity = config.runnerIdentity ?? HOST_RUNNER_IDENTITY;
-  const mutableRegistryUrl = normalizeMutableRegistryUrl(config.mutableRegistryUrl);
   assertRunnerIdentity(runnerIdentity);
   const maxWarmWorkspaces = config.maxWarmWorkspaces ?? 16;
   if (
@@ -1149,12 +1126,6 @@ export function createWidgetNpmDistributionBuild(
     if (request.executableManifest !== undefined) {
       await materializePortableBuildManifest(root, request.executableManifest);
     }
-    if (mutableRegistryUrl !== undefined) {
-      await refreshMutableRegistryPackageLock({ join, readFile, writeFile }, {
-        root,
-        registryUrl: mutableRegistryUrl,
-      });
-    }
     const contract = await readPackageContract(root);
     if (contract.buildScript !== 'omnidraw-widget build .') {
       await bootstrapWidgetUiEntry(root, request.entry);
@@ -1192,8 +1163,6 @@ export function createWidgetNpmDistributionBuild(
     assertActive(request.signal);
     if (installRequired) {
       request.reportProgress?.('installing');
-      await config.prepareNpmDependencies?.();
-      assertActive(request.signal);
       await execute('npm', [
         'ci',
         '--userconfig',
@@ -1260,12 +1229,7 @@ export function createWidgetNpmDistributionBuild(
       const operation = workspace.tail.then(async () => {
         assertActive(request.signal);
         await clearWarmWorkspace(workspace.root);
-        // Development packages can be republished to the loopback registry at
-        // the same semantic version. Their authored lockfile identity therefore
-        // cannot prove that a warm node_modules tree still has the current
-        // bytes.
-        const installRequired = mutableRegistryUrl !== undefined
-          || workspace.dependencyIdentity !== requestedDependencyIdentity;
+        const installRequired = workspace.dependencyIdentity !== requestedDependencyIdentity;
         let installCompleted = !installRequired;
         try {
           const result = await performBuild(

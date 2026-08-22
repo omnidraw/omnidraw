@@ -45,7 +45,6 @@ async function installManifestChange(
   name: string,
 ): Promise<void> {
   const mount = await args.workspace.findMountedWidget(args.chatId, name);
-  await args.workspace.prepareNpmDependencies();
   const result = await (args.npmInstall
     ? args.npmInstall(mount.targetPath)
     : tryNpmInstall({ access, readFile: (path, encoding) => readFile(path, encoding), execFile, join }, {

@@ -2,7 +2,6 @@ import type { TOfflineCheckReport } from '@omnidraw/sdk/fn.offline-check';
 import sdkPackage from '@omnidraw/sdk/package.json';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
-import { refreshMutableRegistryPackageLock } from '../widget/refresh-mutable-registry-package-lock';
 
 const MAX_CHECK_OUTPUT_BYTES = 1024 * 1024;
 const INSTALL_TIMEOUT_MS = 120_000;
@@ -28,8 +27,6 @@ type TRunProcess = (
 type TConfig = Readonly<{
   scratchDirectory: string;
   npmUserConfigPath: string;
-  prepareNpmDependencies?: (signal?: AbortSignal) => Promise<void>;
-  mutableRegistryUrl?: string;
   runProcess: TRunProcess;
 }>;
 
@@ -125,13 +122,6 @@ export function createWidgetSdkSourceCheck(config: TConfig): TWidgetSdkSourceChe
         name: 'omnidraw-host-widget-source-check',
         private: true,
       }), { flag: 'wx', mode: 0o600 });
-      if (config.mutableRegistryUrl !== undefined) {
-        await refreshMutableRegistryPackageLock({ join, readFile, writeFile }, {
-          root: projectRoot,
-          registryUrl: config.mutableRegistryUrl,
-        });
-      }
-      await config.prepareNpmDependencies?.(args.signal);
       await config.runProcess('npm', [
         'ci',
         '--ignore-scripts',

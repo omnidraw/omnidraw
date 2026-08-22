@@ -24,7 +24,7 @@ async function files(root: string): Promise<string[]> {
 describe('@omnidraw/sdk package boundaries', () => {
   test('uses exact implementation dependencies and no retired packages', async () => {
     const manifest = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'));
-    expect(manifest.version).toBe('0.14.0');
+    expect(manifest.version).toBe('0.7.0');
     expect(manifest.dependencies).toEqual({
       '@babel/parser': '7.29.8',
       '@babel/traverse': '7.29.8',

@@ -1,6 +1,6 @@
 {
   "name": "@omnidraw/sdk",
-  "version": "0.14.0",
+  "version": "0.7.0",
   "description": "Public widget and function-client authoring SDK for Omnidraw.",
   "license": "MIT",
   "repository": {

@@ -50,7 +50,6 @@ import type {
 } from '#backend/shell/api/resource/types';
 import { DEFAULT_OSS_CELL_ID } from '#backend/shell/database/CONSTANTS';
 import type { ICliConfig } from '../cli/config';
-import { fnLocalRegistryNpmUserConfig } from '../registry/fn.local-registry-npm-userconfig';
 import { fnWidgetCapsuleBuilderIdentity } from '../widget/fn.widget-capsule-builder-identity';
 import { fnWidgetNpmScratchRoot } from '../widget/fn.widget-npm-scratch-root';
 import {
@@ -104,10 +103,6 @@ import {
   resolvePreviewInspectionReleaseRuntime,
 } from '../preview/preview-inspection-release-runtime';
 import { WidgetReleaseAttestationService } from '../widget/WidgetReleaseAttestationService';
-import {
-  LocalWidgetPackageRegistrySync,
-  type TLocalWidgetPackageRegistryExecute,
-} from '../widget/LocalWidgetPackageRegistrySync';
 import { WidgetSourceSnapshot } from '../widget-domain/local';
 import {
   createWidgetSdkSourceCheck,
@@ -154,28 +149,10 @@ export type TLiveMechanicsOptions = Readonly<{
   capsuleBuild?: TOmnidrawCapsuleBuild;
   distributionBuild?: TOmnidrawDistributionBuild;
   distributionBuildEnvironmentIdentity?: string;
-  localWidgetPackageRegistryExecute?: TLocalWidgetPackageRegistryExecute;
   createFunctionProcessDriver?: (args: Readonly<{
     tempRoot: string;
   }>) => BunChildFunctionProcessDriver;
 }>;
-
-export function createLiveLocalWidgetPackageRegistrySync(args: Readonly<{
-  localDevelopment: boolean;
-  repositoryRoot?: string;
-  execute?: TLocalWidgetPackageRegistryExecute;
-}>): LocalWidgetPackageRegistrySync | null {
-  if (!args.localDevelopment) return null;
-  if (args.repositoryRoot === undefined) {
-    throw new Error(
-      'Local widget package synchronization requires the Omnidraw repository root from the backend runtime edge.',
-    );
-  }
-  return new LocalWidgetPackageRegistrySync({
-    repositoryRoot: args.repositoryRoot,
-    ...(args.execute === undefined ? {} : { execute: args.execute }),
-  });
-}
 
 export function layerLiveMechanics(args: Readonly<{
   config: ICliConfig;
@@ -188,24 +165,7 @@ export function layerLiveMechanics(args: Readonly<{
   const options = args.options ?? {};
   const eventPublisher = new EventPublisherService();
   const homeDirectory = homedir();
-  const localDevelopment = config.dev && process.env.NODE_ENV !== 'production';
-  const npmUserConfigPath = fnLocalRegistryNpmUserConfig({
-    homeDirectory,
-    localDevelopment,
-    stateDirectory: process.env.LOCAL_NPM_REGISTRY_STATE_DIR,
-    join,
-  });
-  const mutableRegistryUrl = localDevelopment
-    ? process.env.LOCAL_NPM_REGISTRY_URL ?? 'http://127.0.0.1:4873/'
-    : undefined;
-  const localWidgetPackageRegistry = createLiveLocalWidgetPackageRegistrySync({
-    localDevelopment,
-    repositoryRoot: args.repositoryRoot,
-    execute: options.localWidgetPackageRegistryExecute,
-  });
-  const prepareWidgetNpmDependencies = localWidgetPackageRegistry === null
-    ? undefined
-    : (signal?: AbortSignal) => localWidgetPackageRegistry.sync(signal);
+  const npmUserConfigPath = process.env.NPM_CONFIG_USERCONFIG ?? join(homeDirectory, '.npmrc');
   const distributionBuildSetup = (() => {
     const injected = options.distributionBuild;
     if (injected !== undefined) {
@@ -250,8 +210,6 @@ export function layerLiveMechanics(args: Readonly<{
         createWidgetNpmDistributionBuild({
           scratchDirectory,
           npmUserConfigPath,
-          prepareNpmDependencies: prepareWidgetNpmDependencies,
-          mutableRegistryUrl,
           runProcess: runner.runProcess,
           runnerIdentity: runner.identity,
         })
@@ -880,8 +838,6 @@ export function layerLiveMechanics(args: Readonly<{
   const widgetSourceCheck = createWidgetSdkSourceCheck({
     scratchDirectory: join(widgetNpmScratchRoot, 'widget-source-checks'),
     npmUserConfigPath,
-    prepareNpmDependencies: prepareWidgetNpmDependencies,
-    mutableRegistryUrl,
     runProcess: runWidgetBuildProcess,
   });
   const widgetAuthoring = new WidgetAuthoringVerificationService({
@@ -919,7 +875,6 @@ export function layerLiveMechanics(args: Readonly<{
     dataPath: agentRoot,
     widgetDraftsRoot: config.home.widgetDraftsRoot,
     npmUserConfigPath,
-    prepareWidgetNpmDependencies,
     onWidgetDraftsChanged: async () => {
       await widgetCatalog.refresh();
     },

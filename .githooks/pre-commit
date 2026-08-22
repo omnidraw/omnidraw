@@ -1,3 +1,0 @@
-#!/bin/sh
-root="$(git rev-parse --show-toplevel)" || exit 1
-exec node "$root/scripts/sanitize-published-lockfile.mjs" pre-commit

@@ -63,7 +63,7 @@ const failedReport = JSON.stringify({
 });
 
 describe('createWidgetSdkSourceCheck', () => {
-  test('checks an isolated capture with prepared dependencies and the source SDK CLI', async () => {
+  test('checks an isolated capture with the source SDK CLI', async () => {
     const scratchDirectory = await mkdtemp('/tmp/omnidraw-host-source-check-');
     roots.push(scratchDirectory);
     const calls: Array<Readonly<{
@@ -72,12 +72,10 @@ describe('createWidgetSdkSourceCheck', () => {
       cwd: string;
       allowedExitCodes?: readonly number[];
     }>> = [];
-    let prepared = 0;
     let operationRoot = '';
     const check = createWidgetSdkSourceCheck({
       scratchDirectory,
       npmUserConfigPath: '/tmp/host-source-check.npmrc',
-      prepareNpmDependencies: async () => { prepared += 1; },
       runProcess: async (command, args, options) => {
         operationRoot = dirname(options.cwd);
         calls.push({
@@ -108,7 +106,6 @@ describe('createWidgetSdkSourceCheck', () => {
       signal: new AbortController().signal,
     });
 
-    expect(prepared).toBe(1);
     expect(report.checks).toContainEqual(expect.objectContaining({
       code: 'SOURCE_DOM_EVENT_UNSUPPORTED',
     }));
@@ -123,7 +120,7 @@ describe('createWidgetSdkSourceCheck', () => {
         'install',
         '--ignore-scripts',
         '--package-lock=false',
-        '@omnidraw/sdk@0.14.0',
+        '@omnidraw/sdk@0.7.0',
       ]),
     });
     expect(calls[2]?.args).toEqual(expect.arrayContaining([
@@ -138,7 +135,7 @@ describe('createWidgetSdkSourceCheck', () => {
     await expect(lstat(operationRoot)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  test('removes the isolated capture when dependency preparation fails', async () => {
+  test('removes the isolated capture when dependency installation fails', async () => {
     const scratchDirectory = await mkdtemp('/tmp/omnidraw-host-source-check-fail-');
     roots.push(scratchDirectory);
     let operationRoot = '';

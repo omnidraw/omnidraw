@@ -32,9 +32,6 @@ jobs:
         with:
           bun-version: "1.4.0"
 
-      - name: Check lockfile uses published npm
-        run: bun run check:published-lockfile
-
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
@@ -89,20 +86,13 @@ jobs:
         with:
           bun-version: "1.4.0"
 
-      - name: Verify clone and lockfile policy
+      - name: Verify clone
         shell: bash
         run: |
           anonymous_head="$(GIT_TERMINAL_PROMPT=0 git -c credential.helper= ls-remote https://github.com/omnidraw/omnidraw.git HEAD)"
           test -n "$anonymous_head"
           git lfs fsck
-          git check-ignore -q .npmrc
-          if git ls-files --error-unmatch .npmrc >/dev/null 2>&1; then
-            echo '.npmrc must remain untracked' >&2
-            exit 1
-          fi
-          test ! -e .npmrc
           test ! -e .omnidraw
-          bun run check:published-lockfile
 
       - name: Install from the frozen public lockfile
         run: bun install --frozen-lockfile

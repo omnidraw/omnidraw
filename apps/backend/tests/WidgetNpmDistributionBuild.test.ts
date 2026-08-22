@@ -88,11 +88,7 @@ describe('WidgetNpmDistributionBuild', () => {
     try {
       const build = createWidgetNpmDistributionBuild({
         scratchDirectory,
-        npmUserConfigPath: '/registry/npmrc',
-        mutableRegistryUrl: 'http://127.0.0.1:4873/',
-        prepareNpmDependencies: async () => {
-          calls.push('registry sync');
-        },
+        npmUserConfigPath: '/home/user/.npmrc',
         runProcess: async (command, args, options) => {
           calls.push(`${command} ${args.join(' ')}`);
           if (command === 'npm' && args[0] === '--version') return '11.0.0';
@@ -102,14 +98,6 @@ describe('WidgetNpmDistributionBuild', () => {
               platform: 'linux',
               architecture: 'x64',
             });
-          }
-          if (args[0] === 'ci') {
-            const lock = JSON.parse(await readFile(
-              join(options.cwd, 'package-lock.json'),
-              'utf8',
-            ));
-            expect(lock.packages['node_modules/@omnidraw/sdk'].integrity).toBeUndefined();
-            expect(lock.packages['node_modules/zod'].integrity).toBe('sha512-public-zod');
           }
           if (args[0] === 'run') {
             expect(await readFile(join(options.cwd, 'ui', 'main.ts'), 'utf8')).toBe([
@@ -145,8 +133,8 @@ describe('WidgetNpmDistributionBuild', () => {
             packages: {
               '': {},
               'node_modules/@omnidraw/sdk': {
-                resolved: 'http://127.0.0.1:4873/@omnidraw/sdk/-/sdk-0.10.0.tgz',
-                integrity: 'sha512-stale-sdk',
+                resolved: 'https://registry.npmjs.org/@omnidraw/sdk/-/sdk-0.7.0.tgz',
+                integrity: 'sha512-sdk',
               },
               'node_modules/zod': {
                 resolved: 'https://registry.npmjs.org/zod/-/zod-4.4.3.tgz',
@@ -161,8 +149,7 @@ describe('WidgetNpmDistributionBuild', () => {
       expect(calls).toEqual([
         'npm --version',
         'node -p JSON.stringify({nodeVersion:process.version,platform:process.platform,architecture:process.arch})',
-        'registry sync',
-        'npm ci --userconfig /registry/npmrc',
+        'npm ci --userconfig /home/user/.npmrc',
         'npm run build',
       ]);
       expect(result).toMatchObject({
@@ -372,62 +359,6 @@ describe('WidgetNpmDistributionBuild', () => {
       expect(installs).toBe(2);
       await build.close();
       expect(await readdir(scratchDirectory)).toEqual([]);
-    } finally {
-      await rm(scratchDirectory, { recursive: true, force: true });
-    }
-  });
-
-  test('reinstalls warm dependencies when the mutable registry may replace same-version bytes', async () => {
-    const scratchDirectory = await mkdtemp(join(tmpdir(), 'widget-npm-mutable-warm-test-'));
-    let installs = 0;
-    let registrySyncs = 0;
-    try {
-      const build = createWidgetNpmDistributionBuild({
-        scratchDirectory,
-        npmUserConfigPath: '/registry/npmrc',
-        mutableRegistryUrl: 'http://127.0.0.1:4873/',
-        prepareNpmDependencies: async () => {
-          registrySyncs += 1;
-        },
-        runProcess: async (command, args, options) => {
-          if (command === 'npm' && args[0] === '--version') return '11.0.0';
-          if (command === 'node') {
-            return JSON.stringify({
-              nodeVersion: 'v22.14.0',
-              platform: 'linux',
-              architecture: 'x64',
-            });
-          }
-          if (args[0] === 'ci') installs += 1;
-          if (args[0] === 'run') {
-            await mkdir(join(options.cwd, 'dist'), { recursive: true });
-            await writeFile(join(options.cwd, 'dist', 'main.js'), 'built();');
-          }
-        },
-      });
-      const request = {
-        sourceRevision: 'source-one',
-        workspaceKey: 'mutable-draft',
-        entry: 'ui/main.ts',
-        files: [
-          sourceFile('package.json', '{"scripts":{"build":"vite build"}}'),
-          sourceFile('package-lock.json', '{"lockfileVersion":3,"packages":{"":{}}}'),
-          sourceFile('ui/main.ts', 'first();'),
-        ],
-      };
-
-      await build(request);
-      await build({
-        ...request,
-        sourceRevision: 'source-two',
-        files: request.files.map((file) => file.path === 'ui/main.ts'
-          ? sourceFile('ui/main.ts', 'second();')
-          : file),
-      });
-
-      expect(installs).toBe(2);
-      expect(registrySyncs).toBe(2);
-      await build.close();
     } finally {
       await rm(scratchDirectory, { recursive: true, force: true });
     }
