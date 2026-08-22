@@ -30,12 +30,10 @@ Read these before changing application architecture or Effect code:
   deterministic simulation testing.
 - [Effect v4 guide](docs/external/llm.effect.md) is the local API and usage
   reference. Follow it instead of relying on Effect v3 knowledge.
-- [Redesign PRD](docs/PRD.md) defines the repository surface, public contracts,
+- [PRD](docs/PRD.md) defines the repository surface, public contracts,
   replacement policy, and fixed product decisions.
 - [Widget system](docs/internal/llm.widget-system.md) defines widget artifacts,
   host bridges, and execution behavior.
-- [Screen atlas](docs/internal/screens/SCREENS.md) defines existing product
-  surfaces and visual baselines.
 
 Use exact `effect@4.0.0-rc.108` across the applications and every public package
 that owns complex side effects, concurrency, streaming, cancellation, retries,
@@ -169,10 +167,6 @@ no shared widget-instance state authority; Capsule local-store values are
 mount-local and ephemeral. Browser Canvas state is optimistic and reconciles
 with the Canvas authority.
 
-`CANVAS_SCENE_SCHEMA_VERSION` remains `"1.0.0"` for the redesigned clean-install
-format. The same literal does not make pre-refactor or unversioned rows
-compatible; those rows and their backups are unsupported.
-
 Do not add repository-wide ambient declarations. Types belong in the nearest
 owning module; runtime/build configuration belongs at an application shell
 edge.
@@ -254,6 +248,9 @@ and packaging-only changes do not by themselves justify a version bump.
 
 Retired package names, including `@omnidraw/tenant-core`, must never be
 reintroduced or republished.
+
+Never change the package version yourself. If you think a version change is
+needed. Ask for confirmation first.
 
 ## Repository workflow
 
