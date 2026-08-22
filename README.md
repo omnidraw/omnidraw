@@ -1,17 +1,14 @@
 # Omnidraw
 
 Run your real apps in an infinite drawing canvas, and generate apps with AI
-using your existing model subscriptions.
+using your existing code plan subscriptions.
 
-Omnidraw is a source-run Bun application. The repository contains a Solid SPA,
-a Bun backend, and five public packages.
 
 ## Quick start
 
 The supported release workflow runs on Linux and macOS and requires:
 
 - Bun `1.4.0` (the exact version declared by `packageManager`)
-- Git LFS, so a normal clone materializes the documentation and task media
 
 Clone, install from the committed public-npm lockfile, build once, and start the
 already-built application:
