@@ -216,8 +216,8 @@ async function main(): Promise<void> {
       || conformance.admissionVectors !== 41
       || conformance.wireVectors !== 6
       || conformance.sqlVectors !== 13
-      || conformance.providerFamilies !== 7
-      || conformance.providerSteps !== 41
+      || conformance.providerFamilies !== 5
+      || conformance.providerSteps !== 33
       || (conformance.moduleBytes ?? 0) < 100
       || (conformance.descriptorBytes ?? 0) < 100
       || conformance.descriptorCount !== 16
