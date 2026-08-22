@@ -47,7 +47,7 @@ const RESOURCE_BATCH_SERIALIZED_LIMIT = 2_000_000;
 const DB_APPLY_AWAIT_DEADLINE_MS = 5_000;
 const DB_APPLY_AWAIT_INTERVAL_MS = 25;
 const RESOURCE_NAME_SCHEMA = Type.String({ minLength: 1, maxLength: 120 });
-const RESOURCE_KIND_SCHEMA = Type.String({ enum: ['kv', 'secretStore', 'db'] as const });
+const RESOURCE_KIND_SCHEMA = Type.String({ enum: ['kv', 'db'] as const });
 const DB_PARAMETER_SCHEMA = Type.Union([
   Type.String(),
   Type.Number(),
@@ -66,7 +66,7 @@ const DATA_READ_QUERY_SCHEMA = Type.Union([
   Type.Object({
     operation: Type.Literal('list'),
     prefix: Type.Optional(Type.String({ maxLength: 1_024 })),
-    search: Type.Optional(Type.String({ minLength: 1, maxLength: 1_024, description: 'Case-sensitive substring to find anywhere in a KV or secret key.' })),
+    search: Type.Optional(Type.String({ minLength: 1, maxLength: 1_024, description: 'Case-sensitive substring to find anywhere in a KV key.' })),
     cursor: Type.Optional(Type.String({ maxLength: 4_096 })),
     limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
   }, { additionalProperties: false }),
@@ -130,7 +130,11 @@ async function resolveResource(
   if (!resourceService?.resolveResourceByName) {
     throw Object.assign(new Error('Resource name resolution is unavailable in this host.'), { code: 'RESOURCE_LOOKUP_UNAVAILABLE' });
   }
-  return resourceService.resolveResourceByName(resourceName, { requireReady });
+  const resource = await resourceService.resolveResourceByName(resourceName, { requireReady });
+  if (resource.kind === 'secretStore') {
+    throw Object.assign(new Error('Secret Store resources are disabled.'), { code: 'RESOURCE_KIND_DISABLED' });
+  }
+  return resource;
 }
 
 async function executeReadQuery(
@@ -332,7 +336,10 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
       if (!await args.authorize('od_resource_list')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
       if (!args.resourceService?.listResources) return toolUnavailable('RESOURCE_LIST_UNAVAILABLE', 'Resource discovery is unavailable in this host.');
       try {
-        const resources = fnSortResources(await args.resourceService.listResources(params.kind ? { kind: params.kind } : {}));
+        const resources = fnSortResources(
+          (await args.resourceService.listResources(params.kind ? { kind: params.kind } : {}))
+            .filter((resource) => resource.kind !== 'secretStore'),
+        );
         const fingerprint = fnResourceListFingerprint(resources);
         const parsedCursor = params.cursor
           ? fnParseResourceListCursor(params.cursor, fingerprint, params.kind)
@@ -361,7 +368,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
   const inspect = defineTool({
     name: 'od_resource_inspect',
     label: 'Inspect Resource',
-    description: 'Inspect compact safe metadata by resourceName, including the exact local resourceId for omnidraw.json, lifecycle status, deletability, KV/secret key count only, or the first dense database schema page.',
+    description: 'Inspect compact safe metadata by resourceName, including the exact local resourceId for omnidraw.json, lifecycle status, deletability, KV key count, or the first dense database schema page.',
     parameters: Type.Object({ resourceName: RESOURCE_NAME_SCHEMA }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
       if (!await args.authorize('od_resource_inspect')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
@@ -412,7 +419,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
   const create = defineTool({
     name: 'od_resource_create',
     label: 'Create Resource',
-    description: 'Request creation of a named KV, secret-store, or SQLite database resource. Direct user approval is required. Success returns the exact local resourceId to write into omnidraw.json.',
+    description: 'Request creation of a named KV or SQLite database resource. Direct user approval is required. Success returns the exact local resourceId to write into omnidraw.json.',
     parameters: Type.Object({
       kind: RESOURCE_KIND_SCHEMA,
       name: RESOURCE_NAME_SCHEMA,
@@ -509,7 +516,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
   const dataRead = defineTool({
     name: 'od_resource_data_read',
     label: 'Read Resource Data',
-    description: 'Run ordered reads against resourceName. KV/secret list supports prefix, substring search, pagination, and returns key metadata only; get reads one KV value. Database schema returns dense catalogs of up to 100 objects with cursor pagination or one detailed table/view definition, while sql runs a bounded read-only statement.',
+    description: 'Run ordered reads against resourceName. KV list supports prefix, substring search, and pagination; get reads one KV value. Database schema returns dense catalogs of up to 100 objects with cursor pagination or one detailed table/view definition, while sql runs a bounded read-only statement.',
     parameters: Type.Object({
       resourceName: RESOURCE_NAME_SCHEMA,
       queries: Type.Array(DATA_READ_QUERY_SCHEMA, { minItems: 1, maxItems: 20 }),

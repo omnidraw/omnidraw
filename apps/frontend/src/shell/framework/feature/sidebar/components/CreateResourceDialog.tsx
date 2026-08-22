@@ -3,7 +3,7 @@ import { createEffect, createMemo, createSignal, createUniqueId, onCleanup, Show
 import { activateModalFocusScope } from "../../../components/ui/modal-focus-scope";
 import styles from "./SidebarDialog.module.css";
 
-type TResourceKind = "kv" | "secretStore" | "db";
+type TResourceKind = "kv" | "db";
 
 type TCreateResourceValue = {
   kind: TResourceKind;
@@ -122,7 +122,6 @@ export const CreateResourceDialog: Component<CreateResourceDialogProps> = (props
                 onChange={(event) => setKind(event.currentTarget.value as TResourceKind)}
               >
                 <option value="kv">Key-value</option>
-                <option value="secretStore">Secret store</option>
                 <option value="db">Database</option>
               </select>
             </div>

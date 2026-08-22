@@ -81,8 +81,8 @@ shared data. The list tool discovers public names; successful create and
 inspect calls return the exact safe local `resourceId` for the manifest. After
 editing a resource requirement, run the same check/build/host-acceptance flow.
 Missing, stale, not-ready, or wrong-kind ids are errors and must never trigger a
-fallback or picker. Protected database or secret changes require host approval.
-Never bypass an approval, expose a secret, copy a host path, or turn validation
+fallback or picker. Protected database changes require host approval.
+Never bypass an approval, expose a credential, copy a host path, or turn validation
 into publication.
 
 Do not create timers, sleeps, retry loops, background workers, HTTP handlers, state-machine runtimes, or durable guest processes. Short server calls are scheduled and bounded by the host.

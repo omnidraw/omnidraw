@@ -11,13 +11,11 @@ import {
   fnValidatePortableResourceSql,
 } from './fn.portable-resource-sql';
 
-export type TPortableResourceKind = 'kv' | 'secretStore' | 'db';
+export type TPortableResourceKind = 'kv' | 'db';
 export type TPortableResourceOperationEffect = TPortableResourceEffect | 'declared';
 
 export const PORTABLE_RESOURCE_OPERATION_LIMITS = Object.freeze({
   keyBytes: 4_096,
-  secretNameBytes: 1_024,
-  secretValueBytes: 1_048_576,
   valueWireBytes: 1_048_576,
   listLimit: 500,
   cursorBytes: 4_096,
@@ -32,11 +30,6 @@ export type TPortableResourceOperationInputSchema =
   | 'kv-set'
   | 'kv-delete'
   | 'kv-compare-and-set'
-  | 'secret-key'
-  | 'secret-list'
-  | 'secret-set'
-  | 'secret-delete'
-  | 'secret-compare-and-set'
   | 'db-invoke'
   | 'db-query'
   | 'db-execute';
@@ -48,10 +41,6 @@ export type TPortableResourceOperationResultSchema =
   | 'kv-entry'
   | 'delete-result'
   | 'kv-compare-and-set-result'
-  | 'secret-entry-or-null'
-  | 'secret-page'
-  | 'secret-entry'
-  | 'secret-compare-and-set-result'
   | 'declared-db-result'
   | 'db-rows'
   | 'db-execute-result';
@@ -81,18 +70,6 @@ export const PORTABLE_RESOURCE_OPERATION_REGISTRY = Object.freeze({
       'write',
       'kv-compare-and-set',
       'kv-compare-and-set-result',
-    ),
-  }),
-  secretStore: Object.freeze({
-    get: operation('read', 'secret-key', 'secret-entry-or-null'),
-    has: operation('read', 'secret-key', 'boolean'),
-    list: operation('read', 'secret-list', 'secret-page'),
-    set: operation('write', 'secret-set', 'secret-entry'),
-    delete: operation('write', 'secret-delete', 'delete-result'),
-    compareAndSet: operation(
-      'write',
-      'secret-compare-and-set',
-      'secret-compare-and-set-result',
     ),
   }),
   db: Object.freeze({
@@ -245,18 +222,13 @@ function assertPortableValue(value: unknown, label: string): void {
   }
 }
 
-function keyInput(
-  input: unknown,
-  field: 'key' | 'name',
-): Readonly<Record<string, unknown>> {
+function keyInput(input: unknown): Readonly<Record<string, unknown>> {
   const record = dataRecord(input, 'Resource operation input', 'INVALID_INPUT');
-  onlyKeys(record, [field], [field], 'Resource operation input', 'INVALID_INPUT');
+  onlyKeys(record, ['key'], ['key'], 'Resource operation input', 'INVALID_INPUT');
   boundedString(
-    record[field],
-    field === 'key'
-      ? PORTABLE_RESOURCE_OPERATION_LIMITS.keyBytes
-      : PORTABLE_RESOURCE_OPERATION_LIMITS.secretNameBytes,
-    `Resource ${field}`,
+    record.key,
+    PORTABLE_RESOURCE_OPERATION_LIMITS.keyBytes,
+    'Resource key',
     'INVALID_INPUT',
   );
   return record;
@@ -339,7 +311,7 @@ function validateInput(
   input: unknown,
 ): void {
   if (schema === 'kv-key') {
-    keyInput(input, 'key');
+    keyInput(input);
     return;
   }
   if (schema === 'kv-list') {
@@ -383,62 +355,6 @@ function validateInput(
       'INVALID_INPUT',
     );
     optionalRevision(record.expectedRevision, 'KV expected revision', 'INVALID_INPUT');
-    return;
-  }
-  if (schema === 'secret-key') {
-    keyInput(input, 'name');
-    return;
-  }
-  if (schema === 'secret-list') {
-    listInput(input, PORTABLE_RESOURCE_OPERATION_LIMITS.secretNameBytes);
-    return;
-  }
-  if (schema === 'secret-set' || schema === 'secret-compare-and-set') {
-    const record = dataRecord(input, 'Secret write input', 'INVALID_INPUT');
-    onlyKeys(
-      record,
-      schema === 'secret-set'
-        ? ['name', 'value']
-        : ['name', 'expectedRevision', 'value'],
-      schema === 'secret-set'
-        ? ['name', 'value']
-        : ['name', 'expectedRevision', 'value'],
-      'Secret write input',
-      'INVALID_INPUT',
-    );
-    boundedString(
-      record.name,
-      PORTABLE_RESOURCE_OPERATION_LIMITS.secretNameBytes,
-      'Secret name',
-      'INVALID_INPUT',
-    );
-    boundedString(
-      record.value,
-      PORTABLE_RESOURCE_OPERATION_LIMITS.secretValueBytes,
-      'Secret value',
-      'INVALID_INPUT',
-    );
-    if (schema === 'secret-compare-and-set') {
-      nullableRevision(record.expectedRevision, 'Secret expected revision', 'INVALID_INPUT');
-    }
-    return;
-  }
-  if (schema === 'secret-delete') {
-    const record = dataRecord(input, 'Secret delete input', 'INVALID_INPUT');
-    onlyKeys(
-      record,
-      ['name', 'expectedRevision'],
-      ['name'],
-      'Secret delete input',
-      'INVALID_INPUT',
-    );
-    boundedString(
-      record.name,
-      PORTABLE_RESOURCE_OPERATION_LIMITS.secretNameBytes,
-      'Secret name',
-      'INVALID_INPUT',
-    );
-    optionalRevision(record.expectedRevision, 'Secret expected revision', 'INVALID_INPUT');
     return;
   }
   if (schema === 'db-invoke') {
@@ -502,22 +418,6 @@ function validateKvEntry(value: unknown, allowNull: boolean): void {
   }
 }
 
-function validateSecretEntry(value: unknown, allowNull: boolean, plaintext: boolean): void {
-  if (allowNull && value === null) return;
-  const record = dataRecord(value, 'Secret entry result', 'INVALID_RESULT');
-  const fields = plaintext ? ['value', 'revision'] : ['name', 'revision'];
-  onlyKeys(record, fields, fields, 'Secret entry result', 'INVALID_RESULT');
-  boundedString(
-    record[plaintext ? 'value' : 'name'],
-    plaintext
-      ? PORTABLE_RESOURCE_OPERATION_LIMITS.secretValueBytes
-      : PORTABLE_RESOURCE_OPERATION_LIMITS.secretNameBytes,
-    'Secret result value',
-    'INVALID_RESULT',
-  );
-  positiveRevision(record.revision, 'Secret revision', 'INVALID_RESULT');
-}
-
 function validateResult(
   schema: TPortableResourceOperationResultSchema,
   value: unknown,
@@ -566,44 +466,6 @@ function validateResult(
       onlyKeys(record, ['ok', 'currentRevision'], ['ok', 'currentRevision'], 'KV compare-and-set result', 'INVALID_RESULT');
       nullableRevision(record.currentRevision, 'KV current revision', 'INVALID_RESULT');
     } else fail('INVALID_RESULT', 'KV compare-and-set result is invalid.');
-    return;
-  }
-  if (schema === 'secret-entry-or-null' || schema === 'secret-entry') {
-    validateSecretEntry(value, schema === 'secret-entry-or-null', schema === 'secret-entry-or-null');
-    return;
-  }
-  if (schema === 'secret-page') {
-    const record = dataRecord(value, 'Secret page result', 'INVALID_RESULT');
-    onlyKeys(record, ['items', 'nextCursor'], ['items'], 'Secret page result', 'INVALID_RESULT');
-    if (!Array.isArray(record.items) || record.items.length > PORTABLE_RESOURCE_OPERATION_LIMITS.listLimit) {
-      fail('INVALID_RESULT', 'Secret page items are invalid.');
-    }
-    for (const item of record.items) {
-      const entry = dataRecord(item, 'Secret page item', 'INVALID_RESULT');
-      onlyKeys(
-        entry,
-        ['name', 'revision'],
-        ['name', 'revision'],
-        'Secret page item',
-        'INVALID_RESULT',
-      );
-      boundedString(entry.name, PORTABLE_RESOURCE_OPERATION_LIMITS.secretNameBytes, 'Secret name', 'INVALID_RESULT');
-      positiveRevision(entry.revision, 'Secret revision', 'INVALID_RESULT');
-    }
-    if (record.nextCursor !== undefined) {
-      boundedString(record.nextCursor, PORTABLE_RESOURCE_OPERATION_LIMITS.cursorBytes, 'Secret cursor', 'INVALID_RESULT');
-    }
-    return;
-  }
-  if (schema === 'secret-compare-and-set-result') {
-    const record = dataRecord(value, 'Secret compare-and-set result', 'INVALID_RESULT');
-    if (record.ok === true) {
-      onlyKeys(record, ['ok', 'entry'], ['ok', 'entry'], 'Secret compare-and-set result', 'INVALID_RESULT');
-      validateSecretEntry(record.entry, false, false);
-    } else if (record.ok === false) {
-      onlyKeys(record, ['ok', 'currentRevision'], ['ok', 'currentRevision'], 'Secret compare-and-set result', 'INVALID_RESULT');
-      nullableRevision(record.currentRevision, 'Secret current revision', 'INVALID_RESULT');
-    } else fail('INVALID_RESULT', 'Secret compare-and-set result is invalid.');
     return;
   }
   const dbResult = schema === 'declared-db-result' ? declaredResult : schema === 'db-rows' ? 'rows' : 'execute';

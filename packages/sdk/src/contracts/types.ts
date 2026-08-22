@@ -44,7 +44,7 @@ export type TWidgetSerializableJsonObject = Readonly<{
 }>;
 
 /** Portable resource declarations are owned by the SDK, never by an OSS backend. */
-export type TWidgetResourceKind = 'kv' | 'secretStore' | 'db';
+export type TWidgetResourceKind = 'kv' | 'db';
 export type TWidgetResourceEffect = 'read' | 'write' | 'read_write';
 export type TWidgetResourceOperationParameterType =
   | 'string'

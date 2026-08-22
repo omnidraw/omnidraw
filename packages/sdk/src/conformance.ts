@@ -83,12 +83,6 @@ export const WIDGET_SDK_CONFORMANCE_FIXTURE = Object.freeze({
         required: true,
       }),
       Object.freeze({
-        slot: 'portableSecrets',
-        kind: 'secretStore',
-        effect: 'read_write',
-        required: true,
-      }),
-      Object.freeze({
         slot: 'portableDb',
         kind: 'db',
         effect: 'read_write',
@@ -329,7 +323,6 @@ const RAW_SERVER_FUNCTION_DESCRIPTORS = Object.freeze([
     resources: Object.freeze([
       Object.freeze({ slot: 'portableDb', effect: 'read_write' as const }),
       Object.freeze({ slot: 'portableKv', effect: 'read_write' as const }),
-      Object.freeze({ slot: 'portableSecrets', effect: 'read_write' as const }),
     ]),
     limits: SERVER_FUNCTION_LIMITS,
   }),
@@ -472,9 +465,9 @@ const SERVER_MODULE_ARTIFACT_IDENTITY_CANONICAL_JSON = JSON.stringify({
   kind: 'server_module',
   format: WIDGET_SERVER_MODULE_FORMAT,
   abi: WIDGET_SERVER_MODULE_ABI,
-  moduleDigestSha256: 'be80f150daf58bf8dd28b905029d011931b8cc209fe9a2bb989905423e2e2892',
+  moduleDigestSha256: 'e7dfcc87f854c98fbabfaaa7adb0339e2314c610805d7f71dec0bfa77e1ed014',
   functionDescriptorsDigestSha256:
-    '5a3609fd051e15701e0e366501f077cfb7b5ec97ed48ee87dce2ad13dee365c7',
+    '7ae153be012141849bcde544634b8f61334495c41a092961250a1461d44f1cba',
 });
 
 /**
@@ -486,23 +479,23 @@ export const WIDGET_SDK_SERVER_MODULE_VECTOR = Object.freeze({
   abi: WIDGET_SERVER_MODULE_ABI,
   moduleSource: WIDGET_SDK_SERVER_MODULE_SOURCE,
   moduleBytes: SERVER_MODULE_BYTES,
-  moduleDigestSha256: 'be80f150daf58bf8dd28b905029d011931b8cc209fe9a2bb989905423e2e2892',
+  moduleDigestSha256: 'e7dfcc87f854c98fbabfaaa7adb0339e2314c610805d7f71dec0bfa77e1ed014',
   manifest: SERVER_MANIFEST,
   canonicalManifestJson: SERVER_MANIFEST_CANONICAL_JSON,
   functionDescriptors: WIDGET_SDK_SERVER_FUNCTION_DESCRIPTORS,
   functionDescriptorsCanonicalJson: SERVER_FUNCTION_DESCRIPTORS_CANONICAL_JSON,
   functionDescriptorsBytes: SERVER_FUNCTION_DESCRIPTORS_BYTES,
   functionDescriptorsDigestSha256:
-    '5a3609fd051e15701e0e366501f077cfb7b5ec97ed48ee87dce2ad13dee365c7',
+    '7ae153be012141849bcde544634b8f61334495c41a092961250a1461d44f1cba',
   artifactIdentityCanonicalJson: SERVER_MODULE_ARTIFACT_IDENTITY_CANONICAL_JSON,
-  artifactDigestSha256: 'af8cb0a9089260cf40b01c876c96bc859bdb9e0f3d34dc57449349c6b1293956',
+  artifactDigestSha256: '505ed937333136b0abda32f42475f54ef2f394657161894162f1435ff123c399',
   buildIdentityInputs: Object.freeze({
     format: WIDGET_SERVER_MODULE_FORMAT,
     abi: WIDGET_SERVER_MODULE_ABI,
     moduleDigestSha256:
-      'be80f150daf58bf8dd28b905029d011931b8cc209fe9a2bb989905423e2e2892',
+      'e7dfcc87f854c98fbabfaaa7adb0339e2314c610805d7f71dec0bfa77e1ed014',
     functionDescriptorsDigestSha256:
-      '5a3609fd051e15701e0e366501f077cfb7b5ec97ed48ee87dce2ad13dee365c7',
+      '7ae153be012141849bcde544634b8f61334495c41a092961250a1461d44f1cba',
   }),
 });
 
@@ -854,7 +847,7 @@ export type TWidgetSdkResourceProviderStep = Readonly<{
 
 export type TWidgetSdkResourceProviderScenario = Readonly<{
   name: string;
-  kind: 'kv' | 'secretStore' | 'db';
+  kind: 'kv' | 'db';
   steps: readonly TWidgetSdkResourceProviderStep[];
 }>;
 
@@ -1003,26 +996,6 @@ export const WIDGET_SDK_RESOURCE_PROVIDER_SCENARIOS = Object.freeze([
   Object.freeze({
     name: 'kv-limit',
     kind: 'kv',
-    steps: Object.freeze([
-      Object.freeze({ name: 'list-limit', operation: 'list', effect: 'read', input: Object.freeze({ limit: 501 }), expected: Object.freeze({ status: 'failed', code: 'RESOURCE_MALFORMED_INPUT' }) }),
-    ]),
-  }),
-  Object.freeze({
-    name: 'secret-store-all-operations-and-conflict',
-    kind: 'secretStore',
-    steps: Object.freeze([
-      Object.freeze({ name: 'set', operation: 'set', effect: 'write', input: Object.freeze({ name: 'api-key', value: 'secret-one' }), expected: Object.freeze({ status: 'succeeded', output: Object.freeze({ name: 'api-key', revision: 1 }) }) }),
-      Object.freeze({ name: 'get', operation: 'get', effect: 'read', input: Object.freeze({ name: 'api-key' }), expected: Object.freeze({ status: 'succeeded', output: Object.freeze({ value: 'secret-one', revision: 1 }) }) }),
-      Object.freeze({ name: 'has', operation: 'has', effect: 'read', input: Object.freeze({ name: 'api-key' }), expected: Object.freeze({ status: 'succeeded', output: true }) }),
-      Object.freeze({ name: 'list', operation: 'list', effect: 'read', input: Object.freeze({ prefix: 'api', limit: 10 }), expected: Object.freeze({ status: 'succeeded', output: Object.freeze({ items: Object.freeze([Object.freeze({ name: 'api-key', revision: 1 })]) }) }) }),
-      Object.freeze({ name: 'compare-and-set-conflict', operation: 'compareAndSet', effect: 'write', input: Object.freeze({ name: 'api-key', expectedRevision: 9, value: 'secret-two' }), expected: Object.freeze({ status: 'succeeded', output: Object.freeze({ ok: false, currentRevision: 1 }) }) }),
-      Object.freeze({ name: 'compare-and-set', operation: 'compareAndSet', effect: 'write', input: Object.freeze({ name: 'api-key', expectedRevision: 1, value: 'secret-two' }), expected: Object.freeze({ status: 'succeeded', output: Object.freeze({ ok: true, entry: Object.freeze({ name: 'api-key', revision: 2 }) }) }) }),
-      Object.freeze({ name: 'delete', operation: 'delete', effect: 'write', input: Object.freeze({ name: 'api-key', expectedRevision: 2 }), expected: Object.freeze({ status: 'succeeded', output: Object.freeze({ deleted: true }) }) }),
-    ]),
-  }),
-  Object.freeze({
-    name: 'secret-store-limit',
-    kind: 'secretStore',
     steps: Object.freeze([
       Object.freeze({ name: 'list-limit', operation: 'list', effect: 'read', input: Object.freeze({ limit: 501 }), expected: Object.freeze({ status: 'failed', code: 'RESOURCE_MALFORMED_INPUT' }) }),
     ]),

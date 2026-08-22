@@ -134,6 +134,8 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`mode: "artifact"`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('can never prove that');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('do not say the real Preview works');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toMatch(/secret[- ]store/i);
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Inspect selected database');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('The AI cannot');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('**Republish**');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('draft Preview title bar or draft detail page');

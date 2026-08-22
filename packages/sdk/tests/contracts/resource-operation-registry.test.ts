@@ -12,21 +12,12 @@ import {
 } from '../../src/contracts/core/fn.resource-wire';
 
 describe('portable resource operation registry', () => {
-  test('freezes the complete KV, secret-store, and database operation surface', () => {
+  test('freezes the complete KV and database operation surface', () => {
     expect(Object.keys(PORTABLE_RESOURCE_OPERATION_REGISTRY)).toEqual([
       'kv',
-      'secretStore',
       'db',
     ]);
     expect(Object.keys(PORTABLE_RESOURCE_OPERATION_REGISTRY.kv)).toEqual([
-      'get',
-      'has',
-      'list',
-      'set',
-      'delete',
-      'compareAndSet',
-    ]);
-    expect(Object.keys(PORTABLE_RESOURCE_OPERATION_REGISTRY.secretStore)).toEqual([
       'get',
       'has',
       'list',
@@ -112,38 +103,6 @@ describe('portable resource operation registry', () => {
       operation: 'compareAndSet',
       result: { ok: false, currentRevision: null },
     })).not.toThrow();
-  });
-
-  test('keeps secret list metadata distinct from explicit plaintext get results', () => {
-    expect(() => fnValidatePortableResourceOperationInput({
-      kind: 'secretStore',
-      operation: 'set',
-      effect: 'write',
-      input: { name: 'api-key', value: 'secret' },
-    })).not.toThrow();
-    expect(() => fnValidatePortableResourceOperationResult({
-      kind: 'secretStore',
-      operation: 'get',
-      result: { value: 'secret', revision: 1 },
-    })).not.toThrow();
-    expect(() => fnValidatePortableResourceOperationResult({
-      kind: 'secretStore',
-      operation: 'list',
-      result: { items: [{ name: 'api-key', revision: 1 }] },
-    })).not.toThrow();
-    expect(() => fnValidatePortableResourceOperationResult({
-      kind: 'secretStore',
-      operation: 'list',
-      result: {
-        items: [{
-          name: 'api-key',
-          revision: 1,
-          createdAtSec: '2026-08-17 00:00:00',
-          updatedAtSec: '2026-08-17 00:00:00',
-          value: 'must-not-leak',
-        }],
-      },
-    })).toThrow(/unsupported field/);
   });
 
   test('requires portable read SQL for query and portable write SQL for execute batches', () => {

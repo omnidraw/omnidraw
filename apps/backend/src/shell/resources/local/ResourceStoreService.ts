@@ -118,6 +118,7 @@ function validatePortableCall(
   effect: TResourcePermission,
   input: unknown,
 ): void {
+  if (requirement.kind === 'secretStore') return;
   const declared = namedDatabaseOperation(requirement, operation, input);
   try {
     fnValidatePortableResourceOperationInput({
@@ -141,6 +142,7 @@ function validatePortableResult(
   input: unknown,
   output: unknown,
 ): void {
+  if (requirement.kind === 'secretStore') return;
   const declared = namedDatabaseOperation(requirement, operation, input);
   try {
     fnValidatePortableResourceOperationResult({

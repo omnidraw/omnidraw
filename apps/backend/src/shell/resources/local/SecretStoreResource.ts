@@ -1,8 +1,8 @@
 import { ResourceError, toResourceError } from '#backend/core/resources/ResourceError';
 import {
-  PORTABLE_RESOURCE_OPERATION_LIMITS,
-  fnGetPortableResourceOperation,
-} from '@omnidraw/sdk/contract';
+  SECRET_STORE_OPERATION_LIMITS,
+  fnGetSecretStoreOperation,
+} from './fn.secret-store-operation';
 import type {
   IResourceKeyValuePersistence,
   TResourceKeyValueDeleteResult,
@@ -20,9 +20,9 @@ import type {
 
 type TResourceProviderCreateArgs = unknown;
 
-const SECRET_NAME_MAX_LENGTH = PORTABLE_RESOURCE_OPERATION_LIMITS.secretNameBytes;
-const SECRET_VALUE_MAX_LENGTH = PORTABLE_RESOURCE_OPERATION_LIMITS.secretValueBytes;
-const LIST_MAX_LIMIT = PORTABLE_RESOURCE_OPERATION_LIMITS.listLimit;
+const SECRET_NAME_MAX_LENGTH = SECRET_STORE_OPERATION_LIMITS.nameBytes;
+const SECRET_VALUE_MAX_LENGTH = SECRET_STORE_OPERATION_LIMITS.valueBytes;
+const LIST_MAX_LIMIT = SECRET_STORE_OPERATION_LIMITS.listLimit;
 
 export type TSecretStoreCompareAndSetResult =
   | { readonly ok: true; readonly entry: TResourceKeyValueEntryMetadata }
@@ -157,7 +157,7 @@ export class SecretStoreResource implements ILocalResourceProvider {
   }
 
   effect(operation: string, _requirement: TLocalResourceRequirement): 'read' | 'write' | null {
-    const descriptor = fnGetPortableResourceOperation('secretStore', operation);
+    const descriptor = fnGetSecretStoreOperation(operation);
     return descriptor?.effect === 'read' || descriptor?.effect === 'write'
       ? descriptor.effect
       : null;

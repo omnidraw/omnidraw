@@ -55,9 +55,9 @@ describe("owned sidebar create dialogs", () => {
       kind: "kv" | "secretStore" | "db";
       name: string;
       status: string;
-    }> = [];
+    }> = [{ id: "secret-retained", kind: "secretStore", name: "Retained secret", status: "ready" }];
     const listResources = vi.fn(async () => [undefined, [...resources]] as const);
-    const createResource = vi.fn(async (value: { kind: "kv" | "secretStore" | "db"; name: string }) => {
+    const createResource = vi.fn(async (value: { kind: "kv" | "db"; name: string }) => {
       resources.push({ id: `resource-${resources.length}`, status: "ready", ...value });
       return [undefined, resources.at(-1)] as const;
     });
@@ -125,7 +125,8 @@ describe("owned sidebar create dialogs", () => {
     });
 
     await vi.waitFor(() => expect(document.body.querySelector('button[aria-label="Add resource"]')).not.toBeNull());
-    const kinds = ["kv", "secretStore", "db"] as const;
+    expect(document.body.textContent).not.toContain("Retained secret");
+    const kinds = ["kv", "db"] as const;
     for (const [index, kind] of kinds.entries()) {
       document.body.querySelector<HTMLButtonElement>('button[aria-label="Add resource"]')!.click();
       const name = await vi.waitFor(() => {
@@ -142,8 +143,8 @@ describe("owned sidebar create dialogs", () => {
       findButton("Create resource").click();
       await vi.waitFor(() => expect(document.body.querySelector('[role="dialog"]')).toBeNull());
     }
-    expect(createResource).toHaveBeenCalledTimes(3);
-    await vi.waitFor(() => expect(listResources.mock.calls.length).toBeGreaterThanOrEqual(4));
+    expect(createResource).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(listResources.mock.calls.length).toBeGreaterThanOrEqual(3));
 
     const diagnostics = [...warnings.mock.calls, ...errors.mock.calls]
       .flat()

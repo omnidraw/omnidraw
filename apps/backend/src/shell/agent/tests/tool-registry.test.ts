@@ -58,7 +58,7 @@ describe('AI Chat tool registry', () => {
       additionalProperties: false,
       required: ['kind', 'name'],
       properties: {
-        kind: { type: 'string', enum: ['kv', 'secretStore', 'db'] },
+        kind: { type: 'string', enum: ['kv', 'db'] },
         name: { type: 'string' },
       },
     });
@@ -69,9 +69,10 @@ describe('AI Chat tool registry', () => {
     expect(JSON.stringify(createSchema)).not.toContain('engine');
 
     const validateCreate = AJV.compile(createSchema);
-    for (const kind of ['kv', 'secretStore', 'db']) {
+    for (const kind of ['kv', 'db']) {
       expect(validateCreate({ kind, name: 'Portable resource' })).toBe(true);
     }
+    expect(validateCreate({ kind: 'secretStore', name: 'Secrets' })).toBe(false);
     expect(validateCreate({ kind: 'db', name: 'Reports', engine: 'sqlite' })).toBe(false);
     expect(validateCreate({ kind: 'unknown', name: 'Unknown' })).toBe(false);
   });

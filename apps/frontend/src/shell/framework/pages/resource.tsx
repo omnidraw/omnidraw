@@ -48,9 +48,11 @@ const ResourcePage: Component = () => {
 
   return (
     <Show keyed when={resource()} fallback={<div class={routeStateStyles.root} role="status" aria-live="polite"><div class={routeStateStyles.panel}><p class={routeStateStyles.loadingText}>{error() || "Loading resource…"}</p></div></div>}>
-      {(current) => current.kind === "db"
-        ? <DbResourcePage resourceId={current.id} />
-        : <GenericResourcePage resource={current} />}
+      {(current) => current.kind === "secretStore"
+        ? <div class={routeStateStyles.root} role="status"><div class={routeStateStyles.panel}><p class={routeStateStyles.loadingText}>Secret Store resources are disabled.</p></div></div>
+        : current.kind === "db"
+          ? <DbResourcePage resourceId={current.id} />
+          : <GenericResourcePage resource={current} />}
     </Show>
   );
 };

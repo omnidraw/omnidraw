@@ -14,7 +14,7 @@ import type { TSemanticFailureDetails } from '../semantic-failure';
 
 export type TResourceId = string;
 export type TResourceSlot = string;
-export type TResourceKind = TWidgetResourceKind;
+export type TResourceKind = TWidgetResourceKind | 'secretStore';
 export type TResourceStatus =
   | 'created'
   | 'provisioning'
@@ -37,6 +37,7 @@ export const RESOURCE_ERROR_CODES = Object.freeze([
   'RESOURCE_NAME_AMBIGUOUS',
   'RESOURCE_NOT_BOUND',
   'RESOURCE_KIND_MISMATCH',
+  'RESOURCE_KIND_DISABLED',
   'RESOURCE_SCOPE_INVALID',
   'RESOURCE_NOT_READY',
   'RESOURCE_UNAVAILABLE',
@@ -138,8 +139,10 @@ export type TResourceReference = Readonly<{
   kind: TResourceKind;
 }>;
 
-/** Portable declarations are owned by the public SDK contract. */
-export type TResourceRequirement = TWidgetResourceRequirement;
+/** Active portable declarations come from the SDK; the shell retains dormant Secret Store records. */
+export type TResourceRequirement = Readonly<
+  Omit<TWidgetResourceRequirement, 'kind'> & { kind: TResourceKind }
+>;
 export type TResourceOperationParameterType = TWidgetResourceOperationParameterType;
 export type TResourceOperationParameterDeclaration =
   TWidgetResourceOperationParameterDeclaration;

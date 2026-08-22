@@ -293,6 +293,9 @@ export class DirectInvocationResourceGateway implements IResourceGateway {
     if (!decision.allowed) throw policyError(decision.reason);
     const binding = await this.#config.bindings.resolveBinding(call.slot);
     if (binding === null) throw new ResourceError('RESOURCE_NOT_BOUND', 'Resource slot is not bound.');
+    if (binding.kind === 'secretStore') {
+      throw new ResourceError('RESOURCE_KIND_DISABLED', 'Secret Store resources are disabled.');
+    }
     if (call.effect === 'read' && !binding.allowRead) throw policyError('slot_not_readable');
     fnValidatePortableResourceOperationInput({
       kind: binding.kind,

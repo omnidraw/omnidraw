@@ -126,8 +126,8 @@ describe('resource tools', () => {
     const firstPage = await executeTool(byName.get('od_resource_list')!, { limit: 2 });
     const firstData = providerModelData(firstPage);
     expect(firstData.resources).toEqual([
-      { name: 'Credentials', kind: 'secretStore', status: 'ready' },
       { name: 'Notes', kind: 'db', status: 'ready' },
+      { name: 'User Preferences', kind: 'kv', status: 'ready' },
     ]);
     expect(firstData.nextCursor).toStartWith('vc1.');
     expect(firstData.nextCursor).not.toContain('secret-1');
@@ -141,7 +141,6 @@ describe('resource tools', () => {
     const secondPage = await executeTool(byName.get('od_resource_list')!, { cursor: firstData.nextCursor, limit: 10 });
     expect(providerModelData(secondPage)).toEqual({
       resources: [
-        { name: 'User Preferences', kind: 'kv', status: 'ready' },
         { name: 'Warehouse', kind: 'db', status: 'provisioning' },
       ],
       nextCursor: null,
@@ -149,12 +148,8 @@ describe('resource tools', () => {
 
     const secretInspect = await executeTool(byName.get('od_resource_inspect')!, { resourceName: ' credentials ' });
     expect(providerModelData(secretInspect)).toMatchObject({
-      resource: { name: 'Credentials', kind: 'secretStore' },
-      ready: true,
-      keys: { count: 1 },
+      error: { code: 'RESOURCE_KIND_DISABLED' },
     });
-    expect(providerModelData(secretInspect).keys).not.toHaveProperty('entries');
-    expect(JSON.stringify(secretInspect)).not.toContain('plaintext');
 
     const dbInspect = await executeTool(byName.get('od_resource_inspect')!, { resourceName: 'Notes' });
     expect(providerModelData(dbInspect)).toMatchObject({
@@ -205,16 +200,9 @@ describe('resource tools', () => {
         { operation: 'list', search: 'OK', limit: 5 },
       ],
     });
-    expect(providerModelData(secretRead).results).toEqual([
-      { index: 0, ok: false, error: { code: 'SECRET_READ_UNSUPPORTED', message: 'Secret plaintext reads are unsupported. Use has or list for key metadata.' } },
-      { index: 1, ok: true, value: { exists: true } },
-      { index: 2, ok: true, value: {
-        kind: 'secretStore',
-        entries: [{ name: 'TOKEN', revision: 1, createdAtSec: timestamp, updatedAtSec: timestamp }],
-        matchingCount: 1,
-        nextCursor: null,
-      } },
-    ]);
+    expect(providerModelData(secretRead)).toMatchObject({
+      error: { code: 'RESOURCE_KIND_DISABLED' },
+    });
 
     const dbRead = await executeTool(byName.get('od_resource_data_read')!, {
       resourceName: 'Notes',
@@ -234,7 +222,6 @@ describe('resource tools', () => {
     }]);
     expect(dataListCalls).toEqual([
       { resourceId: 'kv-1', prefix: undefined, search: 'hem', cursor: undefined, limit: 20 },
-      { resourceId: 'secret-1', prefix: undefined, search: 'OK', cursor: undefined, limit: 5 },
     ]);
   });
 
@@ -445,19 +432,11 @@ describe('resource tools', () => {
     expect(JSON.stringify(deleteResult)).not.toContain('kv-stable-id');
   });
 
-  test('redacts whole secret results and uses the durable SQLite apply path', async () => {
+  test('rejects disabled Secret Store writes and uses the durable SQLite apply path', async () => {
     const resources = [resource('secret-1', 'secretStore', 'Credentials'), resource('db-1', 'db', 'Notes')];
-    const secretValues: unknown[] = [];
     const draftCalls: unknown[] = [];
     const resourceService: TAgentResourceService = {
       ...resolvingService(resources),
-      getResourceDataEntry: async () => null,
-      setResourceDataEntry: async ({ key, value }) => {
-        if (key === 'LEAK') throw new Error(`Provider rejected secret ${String(value)}`);
-        secretValues.push(value);
-        return { kind: 'secretStore', entry: { name: key, revision: 1, createdAtSec: timestamp, updatedAtSec: timestamp } };
-      },
-      deleteResourceDataEntry: async () => ({ deleted: true }),
       createDbDraft: async (resourceId, name) => {
         draftCalls.push({ type: 'create', resourceId, name });
         return { draft: { id: 'draft-1' } };
@@ -476,39 +455,16 @@ describe('resource tools', () => {
       ...testApprovalWorld(),
       createId: () => `approval-${++approvalId}`,
     });
-    let exactSecretArgs: unknown = {
-      resourceName: 'Credentials',
-      operations: [{ operation: 'set', key: 'TOKEN', value: 'super-secret-value' }],
-    };
-    const { byName } = tools(resourceService, approvals, async () => true, () => {
-      const stored = exactSecretArgs;
-      exactSecretArgs = undefined;
-      return stored;
-    });
+    const { byName } = tools(resourceService, approvals);
 
-    const secret = executeTool(byName.get('od_resource_data_write')!, {
+    const secretResult = await executeTool(byName.get('od_resource_data_write')!, {
       resourceName: 'Credentials',
-      operations: [{ operation: 'set', key: 'TOKEN', value: '[redacted]' }],
+      operations: [{ operation: 'set', key: 'TOKEN', value: 'must-not-run' }],
     });
-    const secretApproval = await pendingApproval(approvals);
-    expect(JSON.stringify(secretApproval)).not.toContain('super-secret-value');
-    await approvals.resolve('chat-a', secretApproval.id, 'approve');
-    const secretResult = await secret;
-    expect(secretValues).toEqual(['super-secret-value']);
-    expect(JSON.stringify(secretResult)).not.toContain('super-secret-value');
-
-    exactSecretArgs = {
-      resourceName: 'Credentials',
-      operations: [{ operation: 'set', key: 'LEAK', value: 'must-not-leak' }],
-    };
-    const failedSecret = executeTool(byName.get('od_resource_data_write')!, {
-      resourceName: 'Credentials', operations: [{ operation: 'set', key: 'LEAK', value: '[redacted]' }],
+    expect(providerModelData(secretResult)).toMatchObject({
+      error: { code: 'RESOURCE_KIND_DISABLED' },
     });
-    const failedApproval = await pendingApproval(approvals);
-    await approvals.resolve('chat-a', failedApproval.id, 'approve');
-    const failedResult = await failedSecret;
-    expect(JSON.stringify(failedResult)).not.toContain('must-not-leak');
-    expect(JSON.stringify(failedResult)).toContain('[redacted]');
+    expect(approvals.list('chat-a')).toEqual([]);
 
     const dbWrite = executeTool(byName.get('od_resource_data_write')!, {
       resourceName: 'Notes',

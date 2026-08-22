@@ -298,7 +298,7 @@ function resourceRequirement(
     min: 1, max: 128, pattern: RESOURCE_ID_PATTERN,
   }));
   if (executable && resourceId !== undefined) fail([...path, 'resourceId'], 'Executable projections cannot contain resource IDs.');
-  if (!['kv', 'secretStore', 'db'].includes(String(input.kind))) fail([...path, 'kind'], 'Unknown resource kind.');
+  if (!['kv', 'db'].includes(String(input.kind))) fail([...path, 'kind'], 'Unknown resource kind.');
   if (!['read', 'write', 'read_write'].includes(String(input.effect))) fail([...path, 'effect'], 'Unknown resource effect.');
   const kind = input.kind as TWidgetResourceRequirement['kind'];
   const effect = input.effect as TWidgetResourceRequirement['effect'];

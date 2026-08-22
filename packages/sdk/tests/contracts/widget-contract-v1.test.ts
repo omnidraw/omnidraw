@@ -169,6 +169,10 @@ describe('portable widget manifest v1', () => {
       ...MANIFEST,
       resources: [{ ...resource, arbitrarySql: true }],
     }).success).toBe(false);
+    expect(ZWidgetManifestV1.safeParse({
+      ...MANIFEST,
+      resources: [{ ...resource, kind: 'secretStore' }],
+    }).success).toBe(false);
     expect(ZWidgetManifestV1.parse({
       ...MANIFEST,
       resources: [{ ...resource, resourceId: '4c884964-1ddb-4be7-af8d-4b3e095fcf47' }],

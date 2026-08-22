@@ -38,6 +38,14 @@ const resources: Record<string, TRouteResource> = {
     createdAtSec: "1",
     updatedAtSec: "1",
   },
+  "resource-secret": {
+    id: "resource-secret",
+    kind: "secretStore",
+    name: "Retained secret store",
+    status: "ready",
+    createdAtSec: "1",
+    updatedAtSec: "1",
+  },
 };
 
 let dispose: (() => void) | undefined;
@@ -60,6 +68,7 @@ describe("resource route", () => {
   test.each([
     ["resource-kv", "generic resource workbench"],
     ["resource-db", "database resource workbench"],
+    ["resource-secret", "Secret Store resources are disabled."],
   ])("renders %s without untracked Show reads", async (resourceId, expectedText) => {
     harness.params.id = resourceId;
     const runtime = {

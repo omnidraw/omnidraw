@@ -166,10 +166,6 @@ describe('@omnidraw/sdk/conformance', () => {
         'set', 'get', 'has', 'list', 'compare-and-set-conflict', 'compare-and-set', 'delete',
       ]],
       ['kv-limit', ['list-limit']],
-      ['secret-store-all-operations-and-conflict', [
-        'set', 'get', 'has', 'list', 'compare-and-set-conflict', 'compare-and-set', 'delete',
-      ]],
-      ['secret-store-limit', ['list-limit']],
       ['db-operations-sql-cells-and-json-parameter', [
         'single-execute-create',
         'single-execute-insert',
@@ -201,7 +197,7 @@ describe('@omnidraw/sdk/conformance', () => {
     expect(WIDGET_SDK_RESOURCE_PROVIDER_SCENARIOS.reduce(
       (count, scenario) => count + scenario.steps.length,
       0,
-    )).toBe(41);
+    )).toBe(33);
   });
 
   test('pins one canonical raw module and path-free fn/fx/tx descriptors', () => {
@@ -337,7 +333,7 @@ describe('@omnidraw/sdk/conformance', () => {
     ));
     expect(disposed).toBe(WIDGET_SDK_RESOURCE_PROVIDER_SCENARIOS.length);
     expect(new Set(WIDGET_SDK_RESOURCE_PROVIDER_SCENARIOS.map(({ kind }) => kind)))
-      .toEqual(new Set(['kv', 'secretStore', 'db']));
+      .toEqual(new Set(['kv', 'db']));
   });
 
   test('runs function outcomes through a narrow disposable port and fails on drift', async () => {

@@ -48,7 +48,7 @@ const Sidebar: Component<SidebarProps> = (props) => {
   const [canvasesExpanded, setCanvasesExpanded] = createSignal(true);
   const [resourcesExpanded, setResourcesExpanded] = createSignal(true);
   const [createResourceDialogOpen, setCreateResourceDialogOpen] = createSignal(false);
-  const [resources, setResources] = createSignal<Array<{ id: string; name: string; kind: "kv" | "secretStore" | "db"; status: string }>>([]);
+  const [resources, setResources] = createSignal<Array<{ id: string; name: string; kind: "kv" | "db"; status: string }>>([]);
 
   const loadResources = async () => {
     const [err, result] = await controller.apiService.api.resource.resources.list();
@@ -56,7 +56,7 @@ const Sidebar: Component<SidebarProps> = (props) => {
       application.notifyError(err?.message ?? "Resources are unavailable.");
       return;
     }
-    setResources([...result]);
+    setResources(result.filter((resource): resource is typeof resource & { kind: "kv" | "db" } => resource.kind !== "secretStore"));
   };
 
   onSettled(() => {
@@ -65,7 +65,7 @@ const Sidebar: Component<SidebarProps> = (props) => {
     return unsubscribe;
   });
 
-  const handleCreateResource = async (value: { kind: "kv" | "secretStore" | "db"; name: string }) => {
+  const handleCreateResource = async (value: { kind: "kv" | "db"; name: string }) => {
     const [err] = await controller.apiService.api.resource.resources.create(value);
     if (err) {
       application.notifyError(err.message);
@@ -225,7 +225,7 @@ const Sidebar: Component<SidebarProps> = (props) => {
                     >
                       <span class={`${styles.resourceStatus} ${resource.status === "ready" ? styles.resourceStatusReady : ""}`} aria-hidden="true" />
                       <span class={styles.resourceName}>{resource.name}</span>
-                      <span class={styles.resourceKind}>{resource.kind === "secretStore" ? "SECRET" : resource.kind.toUpperCase()}</span>
+                      <span class={styles.resourceKind}>{resource.kind.toUpperCase()}</span>
                     </button>
                   )}
                 </For>

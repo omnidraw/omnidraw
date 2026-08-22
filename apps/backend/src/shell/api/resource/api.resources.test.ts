@@ -1,38 +1,54 @@
 import { describe, expect, test } from 'bun:test';
-import { ResourceError } from '#backend/shell/resources';
-import { apiRevealResourceSecret } from './api.resources';
+import {
+  apiCreateResource,
+  apiListResources,
+  apiRevealResourceSecret,
+} from './api.resources';
 
-describe('resource reveal API', () => {
-  test('delegates one bounded secret reveal to the human secret service', async () => {
-    const calls: unknown[] = [];
-    const reveal = apiRevealResourceSecret.callable({
+describe('disabled Secret Store resource API', () => {
+  test('filters retained Secret Store records from resource discovery', async () => {
+    const list = apiListResources.callable({
       context: {
-        humanResourceSecret: {
-          async revealSecret(input: { resourceId: string; name: string }) {
-            calls.push({ input });
-            return {
-              kind: 'secretStore' as const,
-              name: input.name,
-              value: 'operator-only-secret',
-              revision: 4,
-            };
+        resource: {
+          async listResources() {
+            return [
+              { id: 'kv-1', kind: 'kv', name: 'KV', status: 'ready', lastError: null, createdAtSec: '0', updatedAtSec: '0' },
+              { id: 'secret-1', kind: 'secretStore', name: 'Secrets', status: 'ready', lastError: null, createdAtSec: '0', updatedAtSec: '0' },
+              { id: 'db-1', kind: 'db', name: 'DB', status: 'ready', lastError: null, createdAtSec: '0', updatedAtSec: '0' },
+            ];
           },
         },
       } as never,
     });
 
-    await expect(reveal({ resourceId: 'secret-resource-1', name: 'api-token' })).resolves.toEqual({
-      kind: 'secretStore',
-      name: 'api-token',
-      value: 'operator-only-secret',
-      revision: 4,
-    });
-    expect(calls).toEqual([{
-      input: { resourceId: 'secret-resource-1', name: 'api-token' },
-    }]);
+    await expect(list({})).resolves.toEqual([
+      expect.objectContaining({ id: 'kv-1', kind: 'kv' }),
+      expect.objectContaining({ id: 'db-1', kind: 'db' }),
+    ]);
+    await expect(list({ kind: 'secretStore' })).resolves.toEqual([]);
   });
 
-  test('rejects an invalid secret name before calling the management service', async () => {
+  test('rejects Secret Store creation without calling the retained service', async () => {
+    let called = false;
+    const create = apiCreateResource.callable({
+      context: {
+        resource: {
+          async createResource() {
+            called = true;
+            throw new Error('must not run');
+          },
+        },
+      } as never,
+    });
+
+    await expect(create({ kind: 'secretStore', name: 'Secrets' })).rejects.toMatchObject({
+      code: 'RESOURCE_ERROR',
+      data: { code: 'RESOURCE_KIND_DISABLED' },
+    });
+    expect(called).toBe(false);
+  });
+
+  test('rejects Secret Store reveal without calling the retained service', async () => {
     let called = false;
     const reveal = apiRevealResourceSecret.callable({
       context: {
@@ -45,37 +61,18 @@ describe('resource reveal API', () => {
       } as never,
     });
 
-    await expect(reveal({ resourceId: 'secret-resource-1', name: '   ' }))
-      .rejects.toMatchObject({ code: 'BAD_REQUEST', message: 'Input validation failed' });
+    await expect(reveal({ resourceId: 'secret-resource-1', name: 'api-token' }))
+      .rejects.toMatchObject({
+        code: 'RESOURCE_ERROR',
+        message: 'Secret Store resources are disabled.',
+        data: { code: 'RESOURCE_KIND_DISABLED' },
+      });
     expect(called).toBe(false);
   });
 
-  test('keeps native failure details and plaintext out of reveal errors', async () => {
-    const sentinel = 'must-not-cross-reveal-errors';
-    const reveal = apiRevealResourceSecret.callable({
-      context: {
-        humanResourceSecret: {
-          async revealSecret() {
-            throw new ResourceError(
-              'SECRET_STORE_UNAVAILABLE',
-              'Secret-store resource is unavailable.',
-              { path: `/secret/${sentinel}`, value: sentinel },
-            );
-          },
-        },
-      } as never,
-    });
-
-    try {
-      await reveal({ resourceId: 'secret-resource-1', name: 'api-token' });
-      throw new Error('Expected reveal to fail.');
-    } catch (error) {
-      expect(error).toMatchObject({
-        code: 'RESOURCE_ERROR',
-        message: 'Secret-store resource is unavailable.',
-        data: { code: 'SECRET_STORE_UNAVAILABLE' },
-      });
-      expect(JSON.stringify(error)).not.toContain(sentinel);
-    }
+  test('rejects an invalid secret name before dispatch', async () => {
+    const reveal = apiRevealResourceSecret.callable({ context: {} as never });
+    await expect(reveal({ resourceId: 'secret-resource-1', name: '   ' }))
+      .rejects.toMatchObject({ code: 'BAD_REQUEST', message: 'Input validation failed' });
   });
 });

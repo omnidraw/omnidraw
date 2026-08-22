@@ -230,9 +230,9 @@ Worker globals physically exist. Shared admission rejects direct, computed,
 and unresolved `globalThis` access outside the ECMAScript allowlist, but static
 admission is not the egress boundary. The private live gate must configure an
 outbound Worker to deny public network access and prove denial with an actual
-exfiltration attempt. The user Worker receives no direct Turso binding. KV,
-secret-store, and database resource semantics are brokered by strongly
-consistent storage; Cloudflare KV is not a valid implementation of revisioned
+exfiltration attempt. The user Worker receives no direct Turso binding. KV and
+database resource semantics are brokered by strongly consistent storage;
+Cloudflare KV is not a valid implementation of revisioned
 CAS. Database batches use one provider-owned sticky transaction/pipeline and
 CAS-participating reads cannot use a stale replica.
 
@@ -263,7 +263,6 @@ rechecks this chain on every call; a resource ID alone grants nothing.
 | Resource | Read operations | Write operations | Portable observable behavior |
 | --- | --- | --- | --- |
 | KV | `get`, `has`, `list` | `set`, `delete`, `compareAndSet` | Bounded JSON values, positive revisions, prefix/cursor pagination, and explicit compare-and-set success or conflict. |
-| Secret store | `get`, `has`, `list` | `set`, `delete`, `compareAndSet` | `get` is the explicit widget capability that returns plaintext plus revision. `list` returns only name and revision; it never returns plaintext, provider timestamps, or storage metadata. Writes use positive revisions and explicit compare-and-set success or conflict. |
 | Database | Declared read `invoke`; `query` only when arbitrary SQL is enabled | Declared write `invoke`; `execute` and bounded execute batches only when arbitrary SQL is enabled | Named operations use their declared parameter types, effect, SQL, result kind, and optional JSON result-column declarations. Declared JSON columns decode bounded SQL text as tagged JSON; arbitrary SQLite query results remain text unless declared by a named operation. Rows preserve ordered and duplicate columns plus tagged cell values. Execute results contain normalized affected-row counts and optional decimal-string insert IDs. The adapter, not widget SQL, owns a batch transaction. |
 
 All calls use one SDK-owned bounded request/result/failure wire contract. The
@@ -289,10 +288,10 @@ constructor aliases. The OSS guest additionally disables string and Wasm code
 generation in its VM, and the managed Worker profile must apply the equivalent
 runtime restriction, so indirect constructor reconstruction cannot execute.
 
-OSS preserves its complete local product surface: embedded database files and
-WAL handling, encrypted secrets, catalog/data editing, drafts, apply and
-backup/restore flows, recovery, redacted listing, and explicit human secret
-reveal. A private managed Turso/resource adapter may use different private
+OSS retains its dormant encrypted Secret Store implementation and persistence,
+but no API, UI, agent tool, prompt, or portable SDK surface can create, list,
+open, reveal, mutate, bind, or invoke it. KV and Database remain the active
+resource surface. A private managed Turso/resource adapter may use different private
 storage schemas and management APIs, but the same conformance scenarios must
 produce the same widget-visible transcript and failure classes. Neither side
 may project provider time, identity, credentials, or billing state into the

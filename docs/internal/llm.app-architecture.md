@@ -208,9 +208,8 @@ must not rewrite or rebuild the canonical module or change its artifact digest.
 It shares the untrusted user-Worker realm with the canonical module, holds no
 credential or provider authority, and reaches a separately trusted resource
 broker only through a host binding. Public egress is denied by outbound policy
-and proven live. Managed KV and secret semantics require the same strong
-revision/CAS consistency as the database broker; Cloudflare KV is not a valid
-substitute.
+and proven live. Managed KV semantics require the same strong revision/CAS
+consistency as the database broker; Cloudflare KV is not a valid substitute.
 Managed widget code runs only as a WFP user Worker, never in Cloudflare
 Sandbox, a Container, a Durable Object, or the managed chat/build sandbox.
 Dispatch namespaces, uploads, outbound policy, Cloudflare bindings, resource
