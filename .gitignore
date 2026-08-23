@@ -3,6 +3,7 @@ node_modules/
 
 # Build outputs
 dist/
+.dev-dist/
 !packages/sdk/dist/
 !packages/sdk/dist/**
 .output/
@@ -44,7 +45,10 @@ coverage/
 /tests/artifacts/
 
 # Dev database
+.omnidraw/
+.omnidraw*/
 local-volume/
 
 # AI
 .claude/
+.worktrees/

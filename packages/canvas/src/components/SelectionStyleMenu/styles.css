@@ -1,0 +1,149 @@
+@font-face { font-family: 'Inter'; src: url('../../assets/fonts/inter-400.woff2') format('woff2'); font-style: normal; font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('../../assets/fonts/inter-500.woff2') format('woff2'); font-style: normal; font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('../../assets/fonts/inter-600.woff2') format('woff2'); font-style: normal; font-weight: 600; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('../../assets/fonts/inter-700.woff2') format('woff2'); font-style: normal; font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Fraunces'; src: url('../../assets/fonts/fraunces-400.ttf') format('truetype'); font-style: normal; font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Fraunces'; src: url('../../assets/fonts/fraunces-500.ttf') format('truetype'); font-style: normal; font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Fraunces'; src: url('../../assets/fonts/fraunces-600.ttf') format('truetype'); font-style: normal; font-weight: 600; font-display: swap; }
+@font-face { font-family: 'Fraunces'; src: url('../../assets/fonts/fraunces-700.ttf') format('truetype'); font-style: normal; font-weight: 700; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('../../assets/fonts/jetbrains-mono-400.woff2') format('woff2'); font-style: normal; font-weight: 400; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('../../assets/fonts/jetbrains-mono-500.woff2') format('woff2'); font-style: normal; font-weight: 500; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('../../assets/fonts/jetbrains-mono-600.woff2') format('woff2'); font-style: normal; font-weight: 600; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('../../assets/fonts/jetbrains-mono-700.woff2') format('woff2'); font-style: normal; font-weight: 700; font-display: swap; }
+
+.omnidraw-selection-style-menu {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 49;
+  display: flex;
+  width: 18.5rem;
+  max-height: calc(100% - 1.5rem);
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow: auto;
+  border: 1px solid var(--omnidraw-border);
+  background: var(--omnidraw-card);
+  padding: 0.75rem;
+  color: var(--omnidraw-card-foreground);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+
+.omnidraw-selection-style-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.omnidraw-selection-style-section > span,
+.omnidraw-selection-style-section label {
+  display: flex;
+  justify-content: space-between;
+  color: var(--omnidraw-muted-foreground);
+  font-family: var(--omnidraw-font-mono);
+  font-size: 10px;
+}
+
+.omnidraw-selection-style-colors,
+.omnidraw-selection-style-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.omnidraw-selection-style-choices[data-property='font-family'] {
+  flex-wrap: nowrap;
+}
+
+.omnidraw-style-color {
+  position: relative;
+  width: 1.75rem;
+  height: 1.75rem;
+  overflow: hidden;
+  border: 1px solid var(--omnidraw-border);
+  border-radius: 0.45rem;
+  background:
+    linear-gradient(var(--omnidraw-style-color), var(--omnidraw-style-color)),
+    repeating-conic-gradient(var(--omnidraw-muted) 0 25%, var(--omnidraw-background) 0 50%) 50% / 8px 8px;
+}
+
+.omnidraw-style-color[aria-pressed='true'] {
+  border-color: var(--omnidraw-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--omnidraw-primary) 20%, transparent);
+}
+
+.omnidraw-style-color[aria-pressed='true']::after {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  display: grid;
+  width: 0.7rem;
+  height: 0.7rem;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--omnidraw-primary);
+  color: var(--omnidraw-primary-foreground);
+  content: '✓';
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.omnidraw-selection-style-choice {
+  flex: 1 1 auto;
+  border: 1px solid var(--omnidraw-border);
+  padding: 0.3rem 0.35rem;
+  color: var(--omnidraw-muted-foreground);
+  font-family: var(--omnidraw-font-mono);
+  font-size: 10px;
+}
+
+.omnidraw-selection-style-choice:hover,
+.omnidraw-selection-style-choice[aria-pressed='true'] {
+  background: var(--omnidraw-hover);
+  color: var(--omnidraw-hover-foreground);
+}
+
+.omnidraw-selection-style-choice:focus-visible,
+.omnidraw-style-color:focus-visible,
+.omnidraw-selection-style-section input[type='range']:focus-visible {
+  outline: 2px solid var(--omnidraw-focus-visible);
+  outline-offset: 2px;
+}
+
+.omnidraw-selection-style-section input[type='range'] {
+  appearance: none;
+  width: 100%;
+  height: 1.25rem;
+  border: 1px solid var(--omnidraw-border);
+  border-radius: 0;
+  background:
+    linear-gradient(
+      to right,
+      var(--omnidraw-primary) 0 var(--omnidraw-style-opacity),
+      var(--omnidraw-muted) var(--omnidraw-style-opacity) 100%
+    );
+}
+
+.omnidraw-selection-style-section input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  width: 0.75rem;
+  height: 1.5rem;
+  border: 1px solid var(--omnidraw-foreground);
+  border-radius: 0;
+  background: var(--omnidraw-card-foreground);
+}
+
+.omnidraw-selection-style-section input[type='range']::-moz-range-thumb {
+  width: 0.75rem;
+  height: 1.5rem;
+  border: 1px solid var(--omnidraw-foreground);
+  border-radius: 0;
+  background: var(--omnidraw-card-foreground);
+}
+
+.omnidraw-selection-style-section output {
+  padding: 0 0.25rem;
+  background: var(--omnidraw-muted);
+  color: var(--omnidraw-foreground);
+  font-weight: 700;
+}

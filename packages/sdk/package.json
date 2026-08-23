@@ -1,30 +1,109 @@
 {
-  "name": "@vibecanvas/sdk",
-  "version": "0.1.0",
+  "name": "@omnidraw/sdk",
+  "version": "0.7.0",
+  "description": "Public widget and function-client authoring SDK for Omnidraw.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omnidraw/omnidraw.git",
+    "directory": "packages/sdk"
+  },
+  "publishConfig": {
+    "@omnidraw:registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "type": "module",
+  "bin": {
+    "omnidraw-widget": "./dist/cli.js"
+  },
   "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./manifest": {
+      "types": "./dist/manifest.d.ts",
+      "default": "./dist/manifest.js"
+    },
+    "./contract": {
+      "types": "./dist/contract.d.ts",
+      "default": "./dist/contract.js"
+    },
+    "./artifact": {
+      "types": "./dist/artifact.d.ts",
+      "default": "./dist/artifact.js"
+    },
+    "./guest": {
+      "types": "./dist/guest.d.ts",
+      "default": "./dist/guest.js"
+    },
+    "./host": {
+      "types": "./dist/host.d.ts",
+      "default": "./dist/host.js"
+    },
+    "./resource": {
+      "types": "./dist/resource.d.ts",
+      "default": "./dist/resource.js"
+    },
+    "./function": {
+      "types": "./dist/function.d.ts",
+      "default": "./dist/function.js"
+    },
+    "./tool-icon": {
+      "types": "./dist/tool-icon.d.ts",
+      "default": "./dist/tool-icon.js"
+    },
+    "./conformance": {
+      "types": "./dist/conformance.d.ts",
+      "default": "./dist/conformance.js"
+    },
+    "./fn.offline-check": {
+      "types": "./dist/fn.offline-check.d.ts",
+      "default": "./dist/fn.offline-check.js"
+    },
+    "./fn.portable-build": {
+      "types": "./dist/fn.portable-build.d.ts",
+      "default": "./dist/fn.portable-build.js"
+    },
     "./widget": {
       "types": "./dist/widget.d.ts",
       "default": "./dist/widget.js"
     },
-    "./actor": {
-      "types": "./dist/actor.d.ts",
-      "default": "./dist/actor.js"
-    }
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    },
+    "./function-client": {
+      "types": "./dist/function-client.d.ts",
+      "default": "./dist/function-client.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
-    "actor",
+    "function-client",
+    "server",
     "widget"
   ],
   "scripts": {
-    "build": "bun scripts/build.ts",
-    "test": "bun test --pass-with-no-tests"
+    "build": "bun scripts/build.ts && bun run ../../scripts/prepare-package-dist.ts",
+    "build:stage": "OMNIDRAW_PACKAGE_STAGE=1 bun scripts/build.ts && OMNIDRAW_PACKAGE_STAGE=1 bun run ../../scripts/prepare-package-dist.ts --package-root . --dist-root \"$OMNIDRAW_PACKAGE_DIST_ROOT\"",
+    "prepublishOnly": "bun run typecheck && bun run test && bun run build",
+    "test": "bun test --isolate --pass-with-no-tests",
+    "typecheck": "tsc --noEmit -p tsconfig.type-tests.json"
   },
   "dependencies": {
-    "@arrow-js/core": "^1.0.6"
+    "@babel/parser": "7.29.8",
+    "@babel/traverse": "7.29.8",
+    "@omnidraw/capsule": "0.16.0",
+    "effect": "4.0.0-rc.108",
+    "lucide-static": "1.24.0"
   },
   "devDependencies": {
-    "typescript": "catalog:"
+    "@types/babel__traverse": "7.20.5",
+    "typescript": "7.0.2",
+    "typescript-widget-compiler": "npm:typescript@5.9.3",
+    "typescript-widget-fixture": "npm:typescript@6.0.3"
   }
 }

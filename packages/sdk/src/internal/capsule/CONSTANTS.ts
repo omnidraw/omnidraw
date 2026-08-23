@@ -1,0 +1,2 @@
+export const OMNIDRAW_CAPSULE_CAPABILITY_VERSION = '1.0.0';
+

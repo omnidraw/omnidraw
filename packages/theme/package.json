@@ -1,0 +1,50 @@
+{
+  "name": "@omnidraw/theme",
+  "version": "0.7.0",
+  "description": "Portable Omnidraw theme contracts, built-ins, isolated state, and scoped DOM projection.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omnidraw/omnidraw.git",
+    "directory": "packages/theme"
+  },
+  "publishConfig": {
+    "@omnidraw:registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "provenance": true,
+    "registry": "https://registry.npmjs.org/"
+  },
+  "sideEffects": [
+    "./dist/*.css"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./default.css": "./dist/default.css",
+    "./canvas.css": "./dist/canvas.css"
+  },
+  "scripts": {
+    "build": "bun run scripts/build.ts && bun run ../../scripts/prepare-package-dist.ts",
+    "dev": "bun ./node_modules/typescript/bin/tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "prepack": "bun run build",
+    "prepublishOnly": "bun run typecheck && bun run test && bun run build",
+    "test": "bun test --isolate",
+    "typecheck": "bun ./node_modules/typescript/bin/tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "bun-types": "1.4.0",
+    "typescript": "7.0.2"
+  }
+}

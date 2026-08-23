@@ -1,9 +1,0 @@
-{
-  "name": "@vibecanvas/tapable",
-  "private": true,
-  "type": "module",
-  "exports": {
-    ".": "./src/index.ts",
-    "./*": "./src/*"
-  }
-}

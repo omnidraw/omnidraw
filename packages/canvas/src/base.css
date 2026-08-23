@@ -1,185 +1,73 @@
-:root {
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  --font-display: var(--font-mono);
-  --text-muted: var(--muted-foreground, #57534e);
+@import '@omnidraw/theme/canvas.css';
 
-  --stone-50: #fafaf9;
-  --stone-100: #f5f5f4;
-  --stone-200: #e7e5e4;
-  --stone-300: #d6d3d1;
-  --stone-400: #a8a29e;
-  --stone-500: #78716c;
-  --stone-600: #57534e;
-  --stone-700: #44403c;
-  --stone-800: #292524;
-  --stone-900: #1c1917;
-  --stone-950: #0c0a09;
+.omnidraw-canvas-host {
+  color-scheme: light;
+  --omnidraw-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --omnidraw-font-display: var(--omnidraw-font-mono);
+  --omnidraw-text-muted: var(--omnidraw-muted-foreground);
 
-  --amber-100: #fef3c7;
-  --amber-200: #fde68a;
-  --amber-300: #fcd34d;
-  --amber-400: #fbbf24;
-  --amber-500: #f59e0b;
-  --amber-600: #d97706;
-  --amber-700: #b45309;
-
-  --red-500: #ef4444;
-  --red-600: #dc2626;
-  --red-700: #b91c1c;
-  --green-500: #22c55e;
-  --green-600: #16a34a;
-  --gray-400: #9ca3af;
-  --white: #ffffff;
-
-  --background: #fafaf9;
-  --foreground: #1c1917;
-  --card: #f5f5f4;
-  --card-foreground: #1c1917;
-  --popover: #ffffff;
-  --popover-foreground: #1c1917;
-  --muted: #e7e5e4;
-  --muted-foreground: #57534e;
-  --primary: #f59e0b;
-  --primary-foreground: #0c0a09;
-  --secondary: #e7e5e4;
-  --secondary-foreground: #1c1917;
-  --accent: #fef3c7;
-  --accent-foreground: #78350f;
-  --destructive: #dc2626;
-  --destructive-foreground: #fafaf9;
-  --success: #16a34a;
-  --success-foreground: #fafaf9;
-  --warning: #d97706;
-  --warning-foreground: #0c0a09;
-  --border: #d6d3d1;
-  --input: #d6d3d1;
-  --ring: #f59e0b;
-  --vc-canvas-background: rgba(168, 162, 158, 0.1);
-}
-
-.dark {
-  --background: #0c0a09;
-  --foreground: #fafaf9;
-  --card: #1c1917;
-  --card-foreground: #fafaf9;
-  --popover: #1c1917;
-  --popover-foreground: #fafaf9;
-  --muted: #292524;
-  --muted-foreground: #a8a29e;
-  --secondary: #292524;
-  --secondary-foreground: #fafaf9;
-  --accent: #44403c;
-  --accent-foreground: #fcd34d;
-  --destructive: #ef4444;
-  --destructive-foreground: #fafaf9;
-  --success: #22c55e;
-  --success-foreground: #0c0a09;
-  --warning: #fbbf24;
-  --warning-foreground: #0c0a09;
-  --border: #292524;
-  --input: #292524;
-  --vc-canvas-background: rgba(12, 10, 9, 0.92);
-}
-
-html {
   line-height: 1.5;
-  -webkit-text-size-adjust: 100%;
   tab-size: 4;
+  -webkit-text-size-adjust: 100%;
 }
 
-body {
-  margin: 0;
-  line-height: inherit;
-}
-
-*,
-*::before,
-*::after {
+.omnidraw-canvas-host,
+.omnidraw-canvas-host *,
+.omnidraw-canvas-host *::before,
+.omnidraw-canvas-host *::after {
   box-sizing: border-box;
 }
 
-button,
-input,
-textarea,
-select {
-  font: inherit;
-  color: inherit;
-  letter-spacing: inherit;
+.omnidraw-canvas-host :where(button, input, textarea, select) {
   margin: 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
 }
 
-button,
-[type="button"],
-[type="reset"],
-[type="submit"] {
-  -webkit-appearance: button;
+.omnidraw-canvas-host :where(button, [type='button'], [type='reset'], [type='submit']) {
   appearance: button;
+  border: 0 solid transparent;
   background-color: transparent;
   background-image: none;
-  border: 0 solid transparent;
   padding: 0;
+  -webkit-appearance: button;
 }
 
-button:not(:disabled),
-[type="button"]:not(:disabled),
-[type="reset"]:not(:disabled),
-[type="submit"]:not(:disabled) {
+.omnidraw-canvas-host :where(button, [type='button'], [type='reset'], [type='submit']):not(:disabled) {
   cursor: pointer;
 }
 
-input,
-textarea,
-select {
+.omnidraw-canvas-host :where(input, textarea, select) {
   border: 0 solid transparent;
   border-radius: 0;
 }
 
-input:not([type="checkbox"]):not([type="radio"]),
-textarea,
-select {
-  -webkit-appearance: none;
+.omnidraw-canvas-host :where(input:not([type='checkbox']):not([type='radio']), textarea, select) {
   appearance: none;
+  -webkit-appearance: none;
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6,
-p,
-figure,
-blockquote,
-dl,
-dd,
-pre {
+.omnidraw-canvas-host :where(h1, h2, h3, h4, h5, h6, p, figure, blockquote, dl, dd, pre) {
   margin: 0;
 }
 
-ol,
-ul,
-menu {
+.omnidraw-canvas-host :where(ol, ul, menu) {
+  margin: 0;
+  padding: 0;
   list-style: none;
+}
+
+.omnidraw-canvas-host :where(fieldset, legend) {
   margin: 0;
   padding: 0;
 }
 
-fieldset,
-legend {
-  margin: 0;
-  padding: 0;
-}
-
-img,
-picture,
-video,
-canvas,
-svg,
-iframe {
+.omnidraw-canvas-host :where(img, picture, video, canvas, svg, iframe) {
   display: block;
   vertical-align: middle;
 }
 
-[hidden]:where(:not([hidden="until-found"])) {
+.omnidraw-canvas-host [hidden]:where(:not([hidden='until-found'])) {
   display: none !important;
 }

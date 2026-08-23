@@ -1,0 +1,149 @@
+.root {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  min-height: 1.875rem;
+  padding-left: 0.125rem;
+  border: 1px solid transparent;
+  border-radius: 0;
+  transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.root:hover {
+  background: var(--omnidraw-background);
+}
+
+.rootSelected,
+.rootSelected:hover {
+  border-color: var(--omnidraw-primary);
+  background: color-mix(in srgb, var(--omnidraw-primary) 14%, var(--omnidraw-background));
+}
+
+.canvasButton {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 1.75rem;
+  padding: 0.3125rem 0.625rem 0.3125rem 0.875rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: color-mix(in srgb, var(--omnidraw-foreground) 92%, var(--omnidraw-muted-foreground));
+  text-align: left;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+
+.canvasButton:hover {
+  color: var(--omnidraw-foreground);
+}
+
+.canvasButtonSelected,
+.canvasButtonSelected:hover {
+  color: var(--omnidraw-foreground);
+}
+
+.canvasButton:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--omnidraw-ring);
+}
+
+.label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 700;
+}
+
+.menuTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.875rem;
+  height: 1.875rem;
+  padding: 0.25rem;
+  border: 1px solid transparent;
+  border-radius: 0;
+  color: var(--omnidraw-muted-foreground);
+  opacity: 0.42;
+  transition: opacity 150ms ease, background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+
+.root:hover .menuTrigger,
+.root:focus-within .menuTrigger,
+.menuTrigger[data-expanded] {
+  opacity: 1;
+}
+
+.menuTrigger:hover,
+.menuTrigger[data-expanded] {
+  background: var(--omnidraw-background);
+  color: var(--omnidraw-foreground);
+}
+
+.menuTrigger:focus-visible {
+  opacity: 1;
+  outline: none;
+  box-shadow: 0 0 0 2px var(--omnidraw-ring);
+}
+
+.menuContent {
+  position: fixed;
+  z-index: 80;
+  min-width: 8.75rem;
+  overflow-y: auto;
+  padding: 0.25rem 0;
+  border: 1px solid color-mix(in srgb, var(--omnidraw-border) 90%, transparent);
+  border-radius: 0;
+  background: var(--omnidraw-popover);
+  color: var(--omnidraw-popover-foreground);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  visibility: hidden;
+  animation: menu-enter 100ms ease-out;
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  color: var(--omnidraw-foreground);
+  font-size: 0.8125rem;
+  line-height: 1rem;
+  outline: none;
+  transition: background-color 100ms ease, color 100ms ease;
+}
+
+.menuItem:hover,
+.menuItem:focus-visible {
+  background: var(--omnidraw-accent);
+  color: var(--omnidraw-accent-foreground);
+}
+
+.menuItemDanger {
+  color: var(--omnidraw-destructive);
+}
+
+.menuItemDanger:hover,
+.menuItemDanger:focus-visible {
+  background: var(--omnidraw-destructive);
+  color: var(--omnidraw-destructive-foreground);
+}
+
+@keyframes menu-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-0.25rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

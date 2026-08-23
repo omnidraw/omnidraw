@@ -1,0 +1,1 @@
+PRAGMA table_xinfo(__TABLE_IDENTIFIER__)

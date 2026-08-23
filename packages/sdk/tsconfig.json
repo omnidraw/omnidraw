@@ -8,10 +8,20 @@
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
     "paths": {
-      "@vibecanvas/sdk/widget": ["./src/widget.ts"],
-      "@vibecanvas/sdk/actor": ["./src/actor.ts"],
-      "@vibecanvas/canvas/*": ["../canvas/src/*"],
-      "@vibecanvas/service-automerge/*": ["../service-automerge/src/*"]
+      "@omnidraw/sdk": ["./src/index.ts"],
+      "@omnidraw/sdk/contract": ["./src/contract.ts"],
+      "@omnidraw/sdk/manifest": ["./src/manifest.ts"],
+      "@omnidraw/sdk/artifact": ["./src/artifact.ts"],
+      "@omnidraw/sdk/guest": ["./src/guest.ts"],
+      "@omnidraw/sdk/host": ["./src/host.ts"],
+      "@omnidraw/sdk/resource": ["./src/resource.ts"],
+      "@omnidraw/sdk/function": ["./src/function.ts"],
+      "@omnidraw/sdk/tool-icon": ["./src/tool-icon.ts"],
+      "@omnidraw/sdk/conformance": ["./src/conformance.ts"],
+      "@omnidraw/sdk/widget": ["./src/widget.ts"],
+      "@omnidraw/sdk/server": ["./src/server.ts"],
+      "@omnidraw/sdk/function-client": ["./src/function-client.ts"],
+      "@omnidraw/canvas/*": ["../canvas/src/*"],
     }
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts"]

@@ -1,0 +1,13 @@
+.omnidraw-canvas-engine-host:focus {
+  outline: none;
+}
+
+.omnidraw-canvas-host--space-held .omnidraw-canvas-engine-host,
+.omnidraw-canvas-host--space-held .omnidraw-canvas-engine-host * {
+  cursor: grab !important;
+}
+
+.omnidraw-canvas-host--space-dragging .omnidraw-canvas-engine-host,
+.omnidraw-canvas-host--space-dragging .omnidraw-canvas-engine-host * {
+  cursor: grabbing !important;
+}

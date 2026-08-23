@@ -1,0 +1,15 @@
+{
+  "name": "@omnidraw-fixtures/private-managed-composition",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@omnidraw/canvas-contract": "0.7.0",
+    "@omnidraw/canvas": "0.7.0",
+    "@omnidraw/sdk": "0.7.0",
+    "@omnidraw/component-ai-chat": "0.7.0",
+    "@omnidraw/theme": "0.7.0",
+    "@solidjs/signals": "2.0.0-rc.0",
+    "@solidjs/web": "2.0.0-rc.0",
+    "solid-js": "2.0.0-rc.0"
+  }
+}

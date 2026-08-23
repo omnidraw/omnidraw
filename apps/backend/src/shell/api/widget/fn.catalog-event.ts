@@ -1,0 +1,54 @@
+export type TWidgetCatalogPublicEvent = Readonly<{
+  previousGeneration: number | null;
+  generation: number;
+  fullResync: boolean;
+  changedWidgetKeys: readonly string[];
+  previewWidgetKeys: readonly string[];
+}>;
+
+export function fnWidgetCatalogCatchUpEvent(args: Readonly<{
+  afterGeneration: number | undefined;
+  currentGeneration: number;
+}>): TWidgetCatalogPublicEvent | null {
+  const effectiveAfterGeneration = args.afterGeneration ?? 0;
+  if (effectiveAfterGeneration === args.currentGeneration) return null;
+  return {
+    previousGeneration: args.afterGeneration !== undefined && args.afterGeneration > 0
+      ? args.afterGeneration
+      : null,
+    generation: args.currentGeneration,
+    fullResync: true,
+    changedWidgetKeys: [],
+    previewWidgetKeys: [],
+  };
+}
+
+export function fnCoalesceWidgetCatalogEvents(args: Readonly<{
+  pending: TWidgetCatalogPublicEvent | null;
+  next: TWidgetCatalogPublicEvent;
+  maxChangedWidgetKeys: number;
+}>): TWidgetCatalogPublicEvent {
+  const changed = new Set([
+    ...(args.pending?.changedWidgetKeys ?? []),
+    ...args.next.changedWidgetKeys,
+  ]);
+  const previews = new Set([
+    ...(args.pending?.previewWidgetKeys ?? []),
+    ...args.next.previewWidgetKeys,
+  ]);
+  const fullResync = args.pending?.fullResync === true
+    || args.next.fullResync
+    || changed.size + previews.size > args.maxChangedWidgetKeys;
+  return {
+    previousGeneration: args.pending?.previousGeneration
+      ?? args.next.previousGeneration,
+    generation: args.next.generation,
+    fullResync,
+    changedWidgetKeys: fullResync
+      ? []
+      : [...changed].sort(),
+    previewWidgetKeys: fullResync
+      ? []
+      : [...previews].sort(),
+  };
+}

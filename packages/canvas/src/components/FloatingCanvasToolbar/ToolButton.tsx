@@ -1,64 +1,36 @@
-/**
- * ToolButton Component
- * Individual tool button in the floating toolbar
- */
+import type { TEditorToolId } from '@omnidraw/cangine/editor';
+import { For, type Component } from 'solid-js';
 
-import type { JSX } from "solid-js";
-import "./styles.css";
+type TToolButtonProps = Readonly<{
+  active: boolean;
+  Icon: Component<Readonly<{ size?: number }>>;
+  label: string;
+  shortcuts?: readonly string[];
+  toolId: TEditorToolId;
+  onSelect(toolId: TEditorToolId): void;
+}>;
 
-interface ToolButtonProps {
-  icon: JSX.Element;
-  shortcut?: string;
-  letterShortcut?: string;
-  isActive: boolean;
-  onClick: () => void;
-  ariaLabel?: string;
-  ariaHasPopup?: "menu";
-  ariaExpanded?: boolean;
-  role?: "menuitem";
-}
-
-export function ToolButton(props: ToolButtonProps) {
-  const hasWideShortcut = () => Boolean(props.shortcut && props.shortcut.length > 3);
-
+export function ToolButton(props: TToolButtonProps) {
   return (
     <button
       type="button"
-      onClick={props.onClick}
-      aria-label={props.ariaLabel}
-      aria-haspopup={props.ariaHasPopup}
-      aria-expanded={props.ariaExpanded}
-      role={props.role}
-      class="vc-toolbar-button"
-      classList={{
-        "vc-toolbar-button--active": props.isActive,
-        "vc-toolbar-button--has-wide-shortcut": hasWideShortcut(),
-      }}
+      class={[
+        'omnidraw-toolbar-button',
+        { 'omnidraw-toolbar-button--active': props.active },
+      ]}
+      aria-label={props.label}
+      aria-pressed={props.active ? 'true' : 'false'}
+      title={props.label}
+      onClick={() => props.onSelect(props.toolId)}
     >
-      {props.icon}
-      {props.letterShortcut && (
-        <span
-          class="vc-toolbar-button__shortcut vc-toolbar-button__shortcut--left"
-          classList={{
-            "vc-toolbar-button__shortcut--active": props.isActive,
-            "vc-toolbar-button__shortcut--muted": !props.isActive,
-          }}
-        >
-          {props.letterShortcut}
-        </span>
-      )}
-      {props.shortcut && (
-        <span
-          class="vc-toolbar-button__shortcut vc-toolbar-button__shortcut--right"
-          classList={{
-            "vc-toolbar-button__shortcut--active": props.isActive,
-            "vc-toolbar-button__shortcut--muted": !props.isActive,
-            "vc-toolbar-button__shortcut--wide": hasWideShortcut(),
-          }}
-        >
-          {props.shortcut}
-        </span>
-      )}
+      <span class="omnidraw-toolbar-button__icon">
+        <props.Icon size={14} />
+      </span>
+      <span class="omnidraw-toolbar-button__shortcuts">
+        <For each={props.shortcuts}>
+          {(shortcut) => <span>{shortcut}</span>}
+        </For>
+      </span>
     </button>
   );
 }

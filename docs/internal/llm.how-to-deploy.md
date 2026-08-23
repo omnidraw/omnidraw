@@ -1,56 +1,211 @@
-# How to release Vibecanvas
+# How to publish Omnidraw libraries
 
 Reference only:
-- `.github/workflows/release-vibecanvas.yml`
-- `.github/workflows/release-sdk.yml`
+
 - `.github/workflows/test.yml`
-- `.github/workflows/deploy-web.yml`
+- `public-package-set.json`
+- `scripts/public-packages.ts`
 
-Merging to `main` does not publish npm packages. Package releases are tag-driven.
+Merging to `main` does not publish npm packages. Versioned `@omnidraw/*`
+libraries are built and published manually from a maintainer machine. The two
+apps are not published, and CI verifies releases without publishing them.
 
-The web/docs site is different: it is deployed automatically from `main` to GitHub Pages.
+## Source application release
 
-## Vibecanvas CLI and binary packages
+The supported application release is the source checkout itself. Before any
+release announcement or package publication, verify that an unauthenticated
+repository query succeeds:
 
-Publishes `vibecanvas` and generated macOS/Linux `vibecanvas-*` platform packages. Windows builds are not published.
+```sh
+git ls-remote https://github.com/omnidraw/omnidraw.git HEAD
+```
 
-### Stable
-1. Update `apps/vibecanvas/package.json` to `0.3.0`.
-2. Add `## 0.3.0` to `CHANGELOG.md` if release notes need to be curated.
-3. Commit and merge the version change.
-4. Create and push an explicit tag: `git tag vibecanvas-v0.3.0 && git push origin vibecanvas-v0.3.0`.
-5. GitHub Actions verifies no `vibecanvas@0.3.0` / `vibecanvas-*@0.3.0` package already exists on npm, then publishes npm `latest` and a normal GitHub release.
+Then qualify the documented Linux and macOS workflow from a clean clone with
+Git LFS enabled:
 
-### Beta
-1. Update `apps/vibecanvas/package.json` to `0.3.0-beta.1`.
-2. Commit and merge the version change.
-3. Create and push an explicit tag: `git tag vibecanvas-v0.3.0-beta.1 && git push origin vibecanvas-v0.3.0-beta.1`.
-4. GitHub Actions publishes npm `beta` and a GitHub prerelease.
+```sh
+git clone https://github.com/omnidraw/omnidraw.git
+cd omnidraw
+bun install --frozen-lockfile
+bun run build
+bun run start
+```
 
-### Nightly
-1. Update `apps/vibecanvas/package.json` to `0.3.0-nightly.20260409`.
-2. Commit and merge the version change.
-3. Create and push an explicit tag: `git tag vibecanvas-v0.3.0-nightly.20260409 && git push origin vibecanvas-v0.3.0-nightly.20260409`.
-4. GitHub Actions publishes npm `nightly` and a GitHub prerelease.
+`bun run start` launches the TypeScript backend with `NODE_ENV=production` and
+serves only the already-built frontend. It must not build or mutate generated
+outputs. The clean-source CI matrix probes the default port `7496`, a port
+override, HTTP health and SPA routes, and the application WebSocket before
+checking graceful shutdown and byte-for-byte build stability.
 
-## Web/docs site
+Do not publish packages or release instructions while the anonymous repository
+query fails. The five public manifests and README all use this one canonical
+repository identity.
 
-Deploys the Astro site in `apps/web` to GitHub Pages.
+## Library packages
 
-This is not tag-driven. It deploys when either:
+### Source manifests versus public packages
 
-1. A commit is pushed or merged to `main`.
-2. The `Deploy Web Docs` workflow is run manually from GitHub Actions.
+The `package.json` in each of the five public packages is the development
+manifest. It may contain `workspace:*` and `catalog:` references so packages
+link correctly while several packages are edited together.
 
-The workflow uses `.github/workflows/deploy-web.yml`, builds with Bun in `apps/web`, runs `bun run build`, and deploys via GitHub Pages.
+Never publish the workspace package root.
 
-## SDK package
+Each versioned package's `build` script creates its standalone npm package in
+the ignored `dist/` directory. The root `bun run build:public` builds the five
+public packages in dependency order; `bun run build` then checks the private
+backend and builds the private frontend. Each generated `dist/package.json`:
 
-Publishes only `@vibecanvas/sdk`.
+- retains the package name and release version;
+- converts internal dependencies to exact package versions;
+- resolves catalog dependencies to public registry ranges;
+- points every export at built JavaScript, declarations, CSS, or assets inside
+  the staged package;
+- contains no workspace protocol, filesystem link, source path, or repository
+  path reference.
 
-1. Update `packages/sdk/package.json` to the desired version.
-2. Commit and merge the version change.
-3. Create and push an explicit tag: `git tag sdk-v0.1.0 && git push origin sdk-v0.1.0`.
-4. GitHub Actions verifies `@vibecanvas/sdk@0.1.0` does not already exist on npm, then publishes the SDK to npm. No GitHub release is created for SDK for now.
+The supported publication target is always `./dist`:
 
-If npm already contains the exact package version, the workflow fails before publishing. Bump the package version or remove that version from npm first.
+```sh
+cd packages/<package>
+bun run typecheck
+bun run test
+bun run build
+npm publish ./dist --dry-run --access public
+npm publish ./dist --access public
+```
+
+Do not edit generated `dist` files by hand. Change the source manifest, build
+configuration, or source files and rebuild instead.
+
+### Release set
+
+The workspace package version is the release marker. Unversioned packages and
+all apps are private and must not be published. Read each package manifest and
+run `bun run deploy:packages:list` immediately before a release; never rely on
+a copied version table. If an exact version already exists on npm, verify it
+and skip it. Never overwrite or republish a version.
+
+### Prerequisites
+
+Before publishing the Omnidraw closure, exact external dependencies must be
+available from the public npm registry:
+
+- `@omnidraw/cangine@0.7.0`, published from its owning repository;
+- `@omnidraw/capsule@0.16.0`.
+
+The committed `bun.lock` must resolve those packages from the public npm
+registry. Check each exact version explicitly:
+
+```sh
+npm view @omnidraw/cangine@0.7.0 version dist.integrity --registry=https://registry.npmjs.org/
+npm view @omnidraw/capsule@0.16.0 version dist.integrity --registry=https://registry.npmjs.org/
+```
+
+Stop if either exact version cannot be resolved publicly.
+
+### Dependency-first publication order
+
+Publish one wave completely and verify it on npm before starting the next.
+Packages within one wave have no dependency edge between them and may still be
+published sequentially for a simpler manual release.
+
+1. Foundations with no internal dependency edge between them:
+   `@omnidraw/theme`, `@omnidraw/canvas-contract`, and `@omnidraw/sdk`.
+2. Canvas:
+   `@omnidraw/canvas` after Theme and Canvas Contract are available.
+3. AI Chat:
+   `@omnidraw/component-ai-chat` after Canvas is available.
+
+After each publication, query the exact version rather than `latest`:
+
+```sh
+npm view '@omnidraw/theme@<exact-version>' version dist.integrity time --registry=https://registry.npmjs.org/
+```
+
+Do not advance to a dependent package until npm returns the exact dependency
+version.
+
+### Ask what needs deployment
+
+After a long-running change, run this from the repository root:
+
+```sh
+bun run deploy:packages:list
+```
+
+The command is read-only. It checks exactly the five packages declared by the
+qualified public package set and never selects either private app. For every
+library it checks the public npm registry and reports:
+
+- `CURRENT` when the intended tag already matches the local exact version;
+- `DEPLOY` when npm returns 404 or the local version is newer and unpublished;
+- `TAG` when the exact version already exists but the intended dist-tag points
+  elsewhere, so the version must not be republished;
+- `CATALOG MISMATCH` when the staged `dist/package.json` dependency fields
+  differ from that exact version's package manifest on npm. The report names
+  the next patch version to use after approval and tells you to build again;
+- `BLOCK` when public `latest` is newer than the local version.
+
+It also checks exact external Omnidraw prerequisites, propagates missing
+dependencies through the local package graph, and prints:
+
+- individual build, dry-run, and publish commands;
+- the packages safe to publish now in dependency order.
+
+Exit code `0` means the registry check found no blocking mismatch. Exit code
+`2` means the report contains a missing prerequisite or local version problem;
+read the printed actions, fix them, and rerun the command. A registry or network
+failure exits with code `1` and never prints a deployment command.
+
+### Required verification
+
+Before publishing any package, run the complete staged-distribution gate from
+the repository root:
+
+```sh
+bun install --frozen-lockfile
+bun run build
+bun run test:architecture
+bun run verify:package-dists
+bun run test:packed-public-composition
+bun run test:browser
+```
+
+`verify:package-dists` reads the qualified five-package set, orders the build
+by its dependency graph, builds and inspects every `dist` package, runs
+npm's dry-run pack, creates isolated tarballs, installs the complete closure in
+a clean temporary consumer, and runs Bun and portable Node ESM import smokes.
+It does not publish anything.
+
+The browser gate packs the qualified Canvas closure, performs the production
+consumer build, and runs browser smokes for Canvas entry points, CSS, fonts,
+and the single-Solid-runtime contract.
+
+### Version changes
+
+Only changes to a versioned package's public/runtime code under `src/` require
+and permit a semantic version bump in that package's workspace manifest.
+Changes only to scripts, tests, documentation, package metadata, build
+configuration, export staging, or repository tooling keep the existing
+version. If that version is already public, the deployment report marks it
+current and it must not be republished; the packaging improvement ships with a
+future `src/` release.
+
+For a real `src/` change, never reuse a published version. Rebuild all
+dependents so their generated public manifests pin the new exact internal
+version, then regenerate `bun.lock`.
+
+The deployment report can also expose an older, already-published package whose
+staged dependency pins have drifted because a workspace or catalog dependency
+advanced. This is an exceptional dependency-only release: do not bump or
+publish it automatically. Obtain explicit publication approval for the named
+package, assign a new patch version, rebuild its dependents, and rerun the
+report.
+
+### Recovery from a partial manual release
+
+Do not unpublish or replace an existing version. Stop the release wave, fix the
+problem, increment the affected package, update and rebuild its dependents, and
+resume dependency-first. Do not move a stable dist-tag to a partial or broken
+closure.

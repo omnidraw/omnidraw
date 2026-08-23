@@ -1,0 +1,97 @@
+# Omnidraw manifest v1
+
+Build browser-first widgets. `omnidraw.json` is the authoritative manifest
+and must use schema version 1. Version 1 is the only accepted version: there
+is no older format, no upgrade path, and no compatibility reader. Never
+rewrite, downgrade, or restructure the scaffolded manifest; edit only the
+fields the request actually changes.
+
+```json
+{
+  "$schema": "https://omnidraw.dev/schemas/widget/v1.json",
+  "schemaVersion": 1,
+  "slug": "timer",
+  "name": "Timer",
+  "description": "A focused timer",
+  "tool": {
+    "label": "Timer",
+    "group": null,
+    "priority": 0
+  },
+  "ui": {
+    "runtime": "capsule",
+    "entry": "ui/main.ts",
+    "apis": ["DOM", "CLIPBOARD"]
+  }
+}
+```
+
+- `$schema` is exactly `https://omnidraw.dev/schemas/widget/v1.json`.
+- `schemaVersion` is exactly `1`.
+- `slug` is the stable widget key: lowercase kebab-case, 1-100 bytes. The
+  draft folder is `widgets/drafts/<slug>/`, so the folder name and the slug
+  must always match. Never rename `slug` after creation.
+- `name` is the human-readable display name and must match the draft
+  identity. The chat workspace mounts the draft by this name.
+- `description` is one required human sentence.
+- `tool` is required and strict: `label` is the sidebar/toolbar label,
+  `group` is an optional lowercase kebab-case sidebar group or `null`,
+  `priority` is an integer from -1000 to 1000, and `icon` is an optional
+  pinned Lucide icon name or bounded inline SVG.
+- Every section is strict: unknown fields are validation errors. Never add
+  runtime ABI names, DOM profiles, feature profiles, resolved targets, bundle
+  digests, or host limits.
+- `ui.runtime` is always `capsule`; `ui.entry` is one safe relative TypeScript
+  or JavaScript entry path.
+- `ui.apis` requests Capsule public API groups. `DOM` is explicit and mandatory.
+  `DOM` makes ordinary text selectable, but bounded plain-text copy, cut, and
+  paste require `CLIPBOARD`. Preserve the scaffolded `CLIPBOARD` group for
+  ordinary UI unless the user explicitly requests a narrower non-copyable
+  artifact. This does not expose ambient `navigator.clipboard`, rich clipboard
+  data, files, or images. Add only the other groups the source needs.
+  `CANVAS_2D`, `WEBGL`, and `WEBGPU` are mutually exclusive.
+- `ui.budgets` may request non-negative Capsule ceilings for `cpuMs`,
+  `memoryBytes`, `domNodes`, `handles`, `messageBytes`, `streamBytes`,
+  `assetBytes`, `networkBytes`, `gpuBytes`, and `lifecycleBytes`. Omit it to use
+  Capsule's selected-group defaults. Zero explicitly denies that dimension.
+- Do not claim that live Preview interaction passed unless the current process
+  actually ran it for the exact draft digest.
+- Add `ui.state` only when needed. `localStore` is `none` or `ephemeral` and
+  belongs only to the current Capsule mount; it is never shared or durable.
+- Parking is unavailable in this release. Do not request it.
+- Omit `server` and `resources` for a UI-only widget. This is the default.
+- Add `server: { "entry": "server/main.server.ts" }` only when the request truly needs a short server function. The SDK owns the fixed portable server ABI; never add a runtime or host selection to the manifest. The entry module itself must contain the direct named function exports; do not create a re-exporting index.
+- `resources` is an optional array of host-bound requirements. Each requirement names a stable logical slot, includes the exact local `resourceId` returned by successful resource creation or inspection, and declares kind, required status, read/write ceiling, and allowed operations. Never invent an id or put a path, handle, credential, or secret in the manifest.
+- Source paths are relative, normalized, and contained in the draft. Never use
+  absolute paths, `..`, symlinks, dynamic imports, or runtime `require`.
+
+The draft is an authoritative npm project. Keep its `package.json`,
+package-lock format 3, `vite.config.mjs`, source, and non-empty `build` script
+coherent. Editing `package.json` through the file tools runs host-owned
+bounded dependency lock generation and updates `package-lock.json`; never
+hand-edit the lockfile. Only exact registry versions are accepted and package
+lifecycle scripts are disabled.
+The build must emit a bounded `dist/main.js` ES module plus any relative chunks
+and supported static assets. Do not write or import `dist/` as source.
+`npm run check` and `npm run build` are portable repository commands. They do
+not call Omnidraw, inspect host state/resources, or receive canvas/chat/session
+authority. Build atomically emits bounded output and an untrusted receipt.
+Omnidraw observes that receipt, independently reopens and hashes the current
+source, manifest, output, and Capsule construction, and accepts only an exact
+matching generation. Raw edits leave the previous accepted Preview visible but
+make a new build required.
+
+A validated draft appears in the widget catalog sidebar next to its
+publication. The user places an ephemeral Preview frame from the draft row or
+from the Open Preview action on a successful create/validate result; placing
+that frame opens only the current host-accepted generation. Initial creation
+performs the first portable build; later edits require the same check/build
+flow, and the manual Rebuild action runs that same repository command. Publish
+is a separate user action that accepts only the current host-validated build
+generation; it never trusts raw source, a receipt alone, or a Preview pointer.
+
+Preview construction, diagnostics, handles, and signing are
+owned only by the current process and temporary files. They are not durable
+revision authority. Preview local state ends with its mount. Resource identity comes only from the
+accepted manifest and is revalidated at Preview/function/publication/placement
+boundaries; there is no Preview or per-instance resource choice.

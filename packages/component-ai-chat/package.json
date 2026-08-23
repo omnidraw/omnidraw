@@ -1,0 +1,74 @@
+{
+  "name": "@omnidraw/component-ai-chat",
+  "version": "0.7.0",
+  "description": "Portable Solid AI Chat component and Canvas contribution for Omnidraw.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omnidraw/omnidraw.git",
+    "directory": "packages/component-ai-chat"
+  },
+  "publishConfig": {
+    "@omnidraw:registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "provenance": true,
+    "registry": "https://registry.npmjs.org/"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": [
+    "./dist/styles.css"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./canvas-frame": {
+      "types": "./dist/canvas-frame.d.ts",
+      "import": "./dist/canvas-frame.js",
+      "default": "./dist/canvas-frame.js"
+    },
+    "./styles.css": "./dist/styles.css"
+  },
+  "scripts": {
+    "build": "bun ./node_modules/vite/bin/vite.js build && bun ./node_modules/typescript/bin/tsc -p tsconfig.build.json && bun run scripts/prune-private-declarations.ts && bun run ../../scripts/prepare-package-dist.ts",
+    "prepack": "bun run build",
+    "prepublishOnly": "bun run typecheck && bun run test && bun run build",
+    "test": "bun ./node_modules/vitest/vitest.mjs --run",
+    "typecheck": "bun ./node_modules/typescript/bin/tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@omnidraw/canvas": "workspace:*",
+    "dompurify": "^3.4.11",
+    "effect": "4.0.0-rc.108",
+    "lucide-static": "1.24.0",
+    "prosemirror-commands": "^1.7.1",
+    "prosemirror-history": "^1.5.0",
+    "prosemirror-keymap": "^1.2.3",
+    "prosemirror-model": "^1.25.11",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-view": "^1.42.1"
+  },
+  "peerDependencies": {
+    "@solidjs/web": "2.0.0-rc.0",
+    "solid-js": "2.0.0-rc.0"
+  },
+  "devDependencies": {
+    "@solidjs/web": "catalog:",
+    "jsdom": "^29.1.1",
+    "solid-js": "catalog:",
+    "typescript": "7.0.2",
+    "vite": "^8.1.4",
+    "@solidjs/vite-plugin": "catalog:",
+    "vitest": "^4.1.10"
+  }
+}

@@ -1,0 +1,3275 @@
+import type {
+  TGroupNode,
+  IInfiniteCanvasEngine,
+  TConnectorNode,
+  TImageNode,
+  TPortalRegistration,
+  TRectNode,
+  TSceneNode,
+  TSceneSnapshot,
+  TSerializedSceneCommand,
+} from '@omnidraw/cangine';
+import {
+  createSceneReductionState,
+  reduceSerializedSceneCommands,
+  sceneReductionStateSnapshot,
+} from '@omnidraw/cangine/scene';
+import type {
+  TEditorSceneMutationRequest,
+  TPreparedImageImportRequest,
+} from '@omnidraw/cangine/editor';
+import {
+  CANVAS_WIDGET_EXTENSION_KEY,
+  CANVAS_IMAGE_EXTENSION_KEY,
+  CANVAS_SEMANTIC_STYLE_EXTENSION_KEY,
+  type TCanvasCommand,
+  type TCanvasDocumentTransport,
+  type TCanvasEvent,
+  type TCanvasItemSnapshot,
+  type TCanvasItemsChangedEvent,
+  type TCanvasSnapshot,
+  type TWidgetFrameNode,
+} from '@omnidraw/canvas-contract';
+import { BUILTIN_THEMES } from '@omnidraw/theme';
+import { describe, expect, test, vi } from 'vitest';
+import { fnProjectSemanticCanvasNode } from '../../src/fn.semantic-canvas-style';
+import {
+  CANVAS_RUNTIME_CONTENT_LAYER_ID,
+} from '../../src/internal/cangine-contract-adapter';
+import { CanvasExtensionBridge } from '../../src/internal/CanvasExtensionBridge';
+import {
+  CanvasDocumentService as CanvasDocumentServiceImplementation,
+  type TCanvasDocumentObservation,
+  type TCanvasDocumentServiceOptions,
+} from '../../src/services/CanvasDocumentService';
+
+const TEST_WAIT = Object.freeze({
+  wait(delayMs: number) {
+    let settled = false;
+    let resolve!: () => void;
+    const promise = new Promise<void>((resolvePromise) => {
+      resolve = resolvePromise;
+    });
+    const timeout = setTimeout(() => {
+      settled = true;
+      resolve();
+    }, delayMs);
+    return Object.freeze({
+      promise,
+      cancel() {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve();
+      },
+    });
+  },
+});
+
+class CanvasDocumentService extends CanvasDocumentServiceImplementation {
+  constructor(
+    options: Omit<TCanvasDocumentServiceOptions, 'wait'>
+      & Partial<Pick<TCanvasDocumentServiceOptions, 'wait'>>,
+  ) {
+    super({ ...options, wait: options.wait ?? TEST_WAIT });
+  }
+}
+
+const transform = {
+  position: { x: 0, y: 0 },
+  rotation: 0,
+  scale: { x: 1, y: 1 },
+  skew: { x: 0, y: 0 },
+  origin: { x: 0, y: 0 },
+};
+
+function rect(id = 'rect-a', x = 0): TRectNode {
+  return {
+    id,
+    parentId: null,
+    orderKey: 'A',
+    kind: 'rect',
+    transform: {
+      ...transform,
+      position: { x, y: 0 },
+    },
+    size: { width: 100, height: 60 },
+  };
+}
+
+function group(id = 'group-a'): TGroupNode {
+  return {
+    id,
+    parentId: null,
+    orderKey: 'A',
+    kind: 'group',
+    transform,
+    layout: { type: 'free' },
+  };
+}
+
+function connector(id = 'connector-a'): TConnectorNode {
+  return {
+    id,
+    parentId: null,
+    orderKey: 'C',
+    kind: 'connector',
+    transform,
+    from: {
+      type: 'node', nodeId: 'source', anchor: 'auto',
+      attachment: { mode: 'inside', fixedPoint: { x: 0.75, y: 0.5 } },
+    },
+    to: {
+      type: 'node', nodeId: 'target', anchor: 'auto',
+      attachment: { mode: 'orbit', fixedPoint: { x: 0, y: 0.5 } },
+    },
+    routing: { type: 'orthogonal', cornerRadius: 8 },
+    fixedSegments: [{
+      id: 'middle-leg', start: { x: 40, y: 30 }, end: { x: 120, y: 30 },
+    }],
+    stroke: {
+      width: 2,
+      paint: {
+        type: 'solid',
+        color: { space: 'srgb', r: 0, g: 0, b: 0, a: 1 },
+      },
+    },
+    endMarker: { shape: 'arrow', size: 12, filled: true },
+  };
+}
+
+function chatWidget(id = 'widget-live'): TWidgetFrameNode {
+  return {
+    id,
+    parentId: null,
+    orderKey: 'm',
+    kind: 'widget-frame',
+    transform,
+    size: { width: 360, height: 280 },
+    title: 'AI Chat',
+    extensions: {
+      [CANVAS_WIDGET_EXTENSION_KEY]: {
+        schemaVersion: 1,
+        type: 'ui-widget',
+        kind: 'ai-chat',
+        payload: { sessionId: 'session-live', approvalPolicy: { mode: 'manual' } },
+      },
+    },
+  };
+}
+
+function projectRectRed(red: number): (node: TSceneNode) => TSceneNode {
+  return (node) => (
+    node.kind === 'rect'
+      ? {
+          ...node,
+          fill: {
+            type: 'solid',
+            color: { space: 'srgb', r: red, g: 0, b: 0, a: 1 },
+          },
+        }
+      : node
+  );
+}
+
+function runtimeNode<T extends TSceneNode>(node: T): T {
+  return {
+    ...node,
+    parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
+  };
+}
+
+function item(
+  node: TSceneNode,
+  itemRevision = 1,
+): TCanvasItemSnapshot {
+  return {
+    id: node.id,
+    item: node,
+    itemRevision,
+    createdAtSec: '2026-01-01 00:00:00',
+    updatedAtSec: '2026-01-01 00:00:00',
+  };
+}
+
+function snapshot(
+  items: readonly TCanvasItemSnapshot[],
+  revision = 0,
+): TCanvasSnapshot {
+  return {
+    schemaVersion: '1.0.0',
+    canvasId: 'canvas-a',
+    revision,
+    items,
+  };
+}
+
+function event(
+  commandId: string,
+  revision: number,
+  changedItems: readonly TCanvasItemSnapshot[],
+  deletedItemIds: readonly string[] = [],
+): TCanvasItemsChangedEvent {
+  return {
+    type: 'items-changed',
+    canvasId: 'canvas-a',
+    commandId,
+    revision,
+    changedItems,
+    deletedItemIds,
+  };
+}
+
+function deferred<T>(): Readonly<{
+  promise: Promise<T>;
+  resolve(value: T): void;
+  reject(error: unknown): void;
+}> {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function eventQueue(): Readonly<{
+  iterable: AsyncIterable<TCanvasEvent>;
+  push(event: TCanvasEvent): void;
+}> {
+  const values: TCanvasEvent[] = [];
+  const waiters: Array<(result: IteratorResult<TCanvasEvent>) => void> = [];
+  let closed = false;
+  const iterator: AsyncIterator<TCanvasEvent> = {
+    next: () => {
+      const value = values.shift();
+      if (value !== undefined) {
+        return Promise.resolve({ done: false, value });
+      }
+      if (closed) return Promise.resolve({ done: true, value: undefined });
+      return new Promise((resolve) => waiters.push(resolve));
+    },
+    return: async () => {
+      closed = true;
+      for (const resolve of waiters.splice(0)) {
+        resolve({ done: true, value: undefined });
+      }
+      return { done: true, value: undefined };
+    },
+  };
+  return {
+    iterable: { [Symbol.asyncIterator]: () => iterator },
+    push(value) {
+      const resolve = waiters.shift();
+      if (resolve === undefined) values.push(value);
+      else resolve({ done: false, value });
+    },
+  };
+}
+
+function fakeEngine(): Readonly<{
+  engine: IInfiniteCanvasEngine;
+  apply: ReturnType<typeof vi.fn>;
+  replace: ReturnType<typeof vi.fn>;
+  retain: ReturnType<typeof vi.fn>;
+  release: ReturnType<typeof vi.fn>;
+  replaceRegistrations: ReturnType<typeof vi.fn>;
+  preloadRegistrations: ReturnType<typeof vi.fn>;
+  destroyRegistrations: ReturnType<typeof vi.fn>;
+  registerPortal: ReturnType<typeof vi.fn>;
+  portalHost: HTMLDivElement;
+  seedResource(resourceId: string): void;
+  rejectNextApply(): void;
+  rejectNextRegistrationReplace(): void;
+  setNextApplyRevisionDelta(delta: number): void;
+  setApplyHook(
+    hook: ((commands: readonly TSerializedSceneCommand[]) => void) | null,
+  ): void;
+}> {
+  let sceneState = createSceneReductionState({
+    schemaVersion: '1.0.0',
+    rootLayerIds: [],
+    nodes: [],
+  });
+  const resourceIds = new Set<string>();
+  let revision = 0;
+  let rejectApply = false;
+  let rejectRegistrationReplace = false;
+  let nextApplyRevisionDelta = 1;
+  let applyHook: (
+    (commands: readonly TSerializedSceneCommand[]) => void
+  ) | null = null;
+  const sceneListeners = new Set<() => void>();
+  const portalListeners = new Set<() => void>();
+  const portalHost = document.createElement('div');
+  let portalCleanup: (() => void | Promise<void>) | null = null;
+  const apply = vi.fn((commands: readonly TSerializedSceneCommand[]) => {
+    applyHook?.(commands);
+    if (rejectApply) {
+      rejectApply = false;
+      throw new Error('projection rejected');
+    }
+    const reduction = reduceSerializedSceneCommands(sceneState, commands);
+    if (reduction.state !== sceneState) {
+      sceneState = reduction.state;
+      revision += nextApplyRevisionDelta;
+      for (const listener of [...sceneListeners]) listener();
+    }
+    nextApplyRevisionDelta = 1;
+  });
+  const replace = vi.fn((next: TSceneSnapshot) => {
+    const reduction = reduceSerializedSceneCommands(sceneState, [{
+      type: 'replace-snapshot',
+      snapshot: next,
+    }]);
+    if (reduction.state === sceneState) return;
+    sceneState = reduction.state;
+    revision += 1;
+    for (const listener of [...sceneListeners]) listener();
+  });
+  const retain = vi.fn((resourceId: string) => {
+    if (!resourceIds.has(resourceId)) throw new Error('resource is not registered');
+  });
+  const release = vi.fn();
+  const replaceRegistrations = vi.fn(() => {
+    if (!rejectRegistrationReplace) return;
+    rejectRegistrationReplace = false;
+    throw new Error('registration replacement failed');
+  });
+  const preloadRegistrations = vi.fn(async () => undefined);
+  const destroyRegistrations = vi.fn();
+  const engine = {
+    scene: {
+      get revision() {
+        return revision;
+      },
+      get: (nodeId: string) => sceneState.get(nodeId),
+      has: (nodeId: string) => sceneState.has(nodeId),
+      childrenOf: (parentId: string | null) => sceneState.childrenOf(parentId),
+      query: (predicate: (node: TSceneNode) => boolean) => (
+        sceneReductionStateSnapshot(sceneState).nodes.filter(predicate)
+      ),
+      ancestorsOf: (nodeId: string, options?: { includeSelf?: boolean }) => {
+        const ancestors: TSceneNode[] = [];
+        let current = options?.includeSelf === true
+          ? sceneState.get(nodeId)
+          : (() => {
+              const node = sceneState.get(nodeId);
+              return node?.parentId === null || node === null
+                ? null
+                : sceneState.get(node.parentId);
+            })();
+        while (current !== null) {
+          ancestors.unshift(current);
+          current = current.parentId === null ? null : sceneState.get(current.parentId);
+        }
+        return ancestors;
+      },
+      snapshot: () => sceneReductionStateSnapshot(sceneState),
+      apply,
+      replace,
+      subscribe(listener: () => void) {
+        sceneListeners.add(listener);
+        return () => { sceneListeners.delete(listener); };
+      },
+    },
+    camera: {
+      viewportSize: { width: 800, height: 600 },
+    },
+    portals: {
+      register: vi.fn((registration: TPortalRegistration) => {
+        const mounted = registration.mount({
+          portalId: registration.portalId,
+          host: portalHost,
+          engine,
+        });
+        void Promise.resolve(mounted).then((cleanup) => {
+          portalCleanup = cleanup ?? null;
+        });
+        return () => {
+          const cleanup = portalCleanup;
+          portalCleanup = null;
+          void cleanup?.();
+        };
+      }),
+      state: (portalId: string) => ({
+        portalId,
+        nodeId: portalId.replace('omnidraw:widget:', ''),
+        mounted: true,
+        visible: true,
+        geometry: {
+          nodeId: portalId.replace('omnidraw:widget:', ''),
+          viewportMatrix: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+          viewportBounds: { minX: 0, minY: 0, maxX: 360, maxY: 280 },
+          visibleWorldBounds: { minX: 0, minY: 0, maxX: 800, maxY: 600 },
+          clipped: false,
+          interactive: true,
+          devicePixelRatio: 1,
+        },
+      }),
+      subscribe(listener: () => void) {
+        portalListeners.add(listener);
+        return () => { portalListeners.delete(listener); };
+      },
+    },
+    resources: {
+      createRegistrationOwner: () => ({
+        id: 'test-owner',
+        replace: replaceRegistrations,
+        clear: vi.fn(),
+        preload: preloadRegistrations,
+        destroy: destroyRegistrations,
+      }),
+      state: (resourceId: string) => (
+        resourceIds.has(resourceId) ? { status: 'ready' } : null
+      ),
+      retain,
+      release,
+    },
+  } as unknown as IInfiniteCanvasEngine;
+  const registerPortal = engine.portals.register as ReturnType<typeof vi.fn>;
+  return {
+    engine,
+    apply,
+    replace,
+    retain,
+    release,
+    replaceRegistrations,
+    preloadRegistrations,
+    destroyRegistrations,
+    registerPortal,
+    portalHost,
+    seedResource: (resourceId) => resourceIds.add(resourceId),
+    rejectNextApply: () => {
+      rejectApply = true;
+    },
+    rejectNextRegistrationReplace: () => {
+      rejectRegistrationReplace = true;
+    },
+    setNextApplyRevisionDelta: (delta) => {
+      nextApplyRevisionDelta = delta;
+    },
+    setApplyHook: (hook) => {
+      applyHook = hook;
+    },
+  };
+}
+
+function transportWith(
+  initialSnapshot: TCanvasSnapshot,
+  execute: TCanvasDocumentTransport['execute'],
+  queue = eventQueue(),
+): Readonly<{
+  transport: TCanvasDocumentTransport;
+  getSnapshot: ReturnType<typeof vi.fn>;
+  execute: ReturnType<typeof vi.fn>;
+  queue: ReturnType<typeof eventQueue>;
+}> {
+  const getSnapshot = vi.fn(async () => initialSnapshot);
+  const executeSpy = vi.fn(execute);
+  return {
+    transport: {
+      getSnapshot,
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
+      execute: executeSpy,
+      subscribe: vi.fn(() => queue.iterable),
+    },
+    getSnapshot,
+    execute: executeSpy,
+    queue,
+  };
+}
+
+function mutation(
+  engine: IInfiniteCanvasEngine,
+  transactionId: string,
+  commands: readonly TSerializedSceneCommand[],
+  affectedNodeIds: readonly string[],
+  source = 'test',
+): TEditorSceneMutationRequest {
+  return {
+    transactionId,
+    basisSceneRevision: engine.scene.revision,
+    source,
+    commands,
+    affectedNodeIds,
+  };
+}
+
+function expectProjectionMatchesReadModel(
+  service: CanvasDocumentService,
+  engine: IInfiniteCanvasEngine,
+): void {
+  const projected = engine.scene.snapshot();
+  const expectedIds = [
+    CANVAS_RUNTIME_CONTENT_LAYER_ID,
+    ...service.items().map((snapshot) => snapshot.id),
+  ].sort();
+  expect(projected.nodes.map((node) => node.id).sort()).toEqual(expectedIds);
+  for (const node of projected.nodes) {
+    expect(service.node(node.id)).toEqual(node);
+  }
+}
+
+describe('CanvasDocumentService', () => {
+  test('persists host-synchronized mutations without adding a user undo step', async () => {
+    const before = rect();
+    const after = rect('rect-a', 25);
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async (command) => event(command.commandId, 1, [item(after, 2)]),
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-catalog-sync',
+    });
+    await service.start(fake.engine);
+    service.history.attach();
+
+    service.commitWithoutHistory(mutation(
+      fake.engine,
+      'catalog-sync',
+      [{ type: 'upsert', node: runtimeNode(after) }],
+      ['rect-a'],
+    ));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+
+    expect(service.item('rect-a')?.item).toEqual(after);
+    expect(service.history.canUndo).toBe(false);
+    await service.dispose();
+  });
+
+  test('mounts accepted widget content immediately after acknowledgement without reload', async () => {
+    const acknowledgement = deferred<TCanvasItemsChangedEvent>();
+    const transport = transportWith(snapshot([]), async () => acknowledgement.promise);
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-widget-live',
+    });
+    await service.start(fake.engine);
+
+    let transaction = 0;
+    const bridge = new CanvasExtensionBridge({
+      config: {
+        canvasId: 'canvas-a',
+        container: document.createElement('div'),
+        notification: {
+          showError: vi.fn(),
+          showInfo: vi.fn(),
+          showSuccess: vi.fn(),
+        },
+      },
+      document: service,
+      editor: {
+        state: {
+          selectedNodeIds: [],
+          focusedNodeId: null,
+        },
+        subscribe: () => () => undefined,
+        commitSceneMutation(request) {
+          transaction += 1;
+          service.commit(mutation(
+            fake.engine,
+            `extension-widget-${transaction}`,
+            request.commands,
+            request.commands.flatMap((command) => (
+              command.type === 'upsert' ? [command.node.id] : [command.nodeId]
+            )),
+            request.source,
+          ));
+        },
+        setSelection: vi.fn(),
+      } as never,
+      engine: fake.engine,
+      trace: null,
+      shell: {
+        state: () => ({ kind: 'canvas', widgetId: null }),
+        owns: () => true,
+        subscribe: () => () => undefined,
+        registerOverlay: () => () => undefined,
+      },
+      subscribeWidgetActions: () => () => undefined,
+      onError: vi.fn(),
+    });
+    bridge.context.widgets.register({
+      id: 'ai-chat-live',
+      match: (node) => node.extensions?.[CANVAS_WIDGET_EXTENSION_KEY]
+        !== undefined,
+      mount: ({ container }) => {
+        const content = container.ownerDocument.createElement('div');
+        content.dataset.testWidgetContent = 'mounted';
+        container.append(content);
+        return () => content.remove();
+      },
+    });
+
+    bridge.context.document.commit({
+      source: 'extension:test-widget-live',
+      commands: [{ type: 'upsert', node: chatWidget() }],
+    });
+
+    expect(fake.registerPortal).not.toHaveBeenCalled();
+    expect(fake.portalHost.querySelector('[data-test-widget-content="mounted"]'))
+      .toBeNull();
+    expect(transport.getSnapshot).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(1));
+    acknowledgement.resolve(event('command-widget-live', 1, [
+      item(chatWidget() as unknown as TSceneNode),
+    ]));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(fake.registerPortal).toHaveBeenCalledTimes(1);
+    expect(fake.portalHost.querySelector('[data-test-widget-content="mounted"]'))
+      .not.toBeNull();
+    expect(transport.getSnapshot).toHaveBeenCalledTimes(1);
+
+    await bridge.dispose();
+    await service.dispose();
+  });
+
+  test('retains the latest projector while the initial snapshot is loading', async () => {
+    const authored = rect('semantic');
+    const snapshotGate = deferred<TCanvasSnapshot>();
+    const queue = eventQueue();
+    const getSnapshot = vi.fn(async () => snapshotGate.promise);
+    const transport: TCanvasDocumentTransport = {
+      getSnapshot,
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
+      execute: vi.fn(async () => {
+        throw new Error('not used');
+      }),
+      subscribe: vi.fn(() => queue.iterable),
+    };
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport,
+      createCommandId: () => 'command-a',
+      projectNode: projectRectRed(0.25),
+    });
+
+    const start = service.start(fake.engine);
+    await vi.waitFor(() => expect(getSnapshot).toHaveBeenCalledTimes(1));
+    expect(service.reproject(projectRectRed(0.75))).toBe(false);
+    snapshotGate.resolve(snapshot([item(authored)]));
+    await start;
+
+    expect((service.node(authored.id) as TRectNode).fill).toEqual({
+      type: 'solid',
+      color: { space: 'srgb', r: 0.75, g: 0, b: 0, a: 1 },
+    });
+    expect((service.authoredNode(authored.id) as TRectNode).fill).toBeUndefined();
+
+    await service.dispose();
+  });
+
+  test('releases partial startup ownership and can reacquire after snapshot failure', async () => {
+    const failure = new Error('initial snapshot unavailable');
+    const queue = eventQueue();
+    const getSnapshot = vi.fn()
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValueOnce(snapshot([]));
+    const transport: TCanvasDocumentTransport = {
+      getSnapshot,
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
+      execute: vi.fn(async () => {
+        throw new Error('not used');
+      }),
+      subscribe: vi.fn(() => queue.iterable),
+    };
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport,
+      createCommandId: () => 'command-a',
+    });
+
+    await expect(service.start(fake.engine)).rejects.toBe(failure);
+    expect(fake.destroyRegistrations).toHaveBeenCalledTimes(1);
+    expect(service.revision).toBe(0);
+
+    await expect(service.start(fake.engine)).resolves.toBeUndefined();
+    expect(getSnapshot).toHaveBeenCalledTimes(2);
+    await service.dispose();
+    expect(fake.destroyRegistrations).toHaveBeenCalledTimes(2);
+  });
+
+  test('reprojects semantic paint without a durable edit and preserves authored fallback', async () => {
+    const semantic = rect('semantic');
+    semantic.fill = {
+      type: 'solid',
+      color: { space: 'srgb', r: 0.1, g: 0.2, b: 0.3, a: 1 },
+    };
+    semantic.extensions = {
+      [CANVAS_SEMANTIC_STYLE_EXTENSION_KEY]: {
+        schemaVersion: 1,
+        background: 'green',
+      },
+    };
+    const literal = rect('literal');
+    literal.orderKey = 'B';
+    literal.fill = {
+      type: 'solid',
+      color: { space: 'srgb', r: 0.7, g: 0.2, b: 0.4, a: 1 },
+    };
+    const after = { ...semantic, transform: {
+      ...semantic.transform,
+      position: { x: 25, y: 0 },
+    } };
+    const acknowledgement = deferred<TCanvasItemsChangedEvent>();
+    const transport = transportWith(
+      snapshot([item(semantic), item(literal)]),
+      async () => acknowledgement.promise,
+    );
+    const fake = fakeEngine();
+    const project = (themeIndex: number) => (node: TSceneNode) => (
+      fnProjectSemanticCanvasNode({
+        node,
+        colors: BUILTIN_THEMES[themeIndex]!.canvas.colors,
+      })
+    );
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+      projectNode: project(0),
+    });
+    await service.start(fake.engine);
+    const durableRevision = service.revision;
+    const literalPaint = fake.engine.scene.get(literal.id)?.kind === 'rect'
+      ? fake.engine.scene.get(literal.id).fill
+      : null;
+
+    expect(service.reproject(project(1))).toBe(true);
+    expect(service.revision).toBe(durableRevision);
+    expect(transport.execute).not.toHaveBeenCalled();
+    expect((service.node(semantic.id) as TRectNode).fill).toEqual({
+      type: 'solid',
+      color: BUILTIN_THEMES[1]!.canvas.colors.green.fill,
+    });
+    expect((service.authoredNode(semantic.id) as TRectNode).fill)
+      .toEqual(semantic.fill);
+    expect((service.node(literal.id) as TRectNode).fill).toEqual(literalPaint);
+
+    const editedRuntime = {
+      ...(service.node(semantic.id) as TRectNode),
+      transform: runtimeNode(after).transform,
+    };
+    service.commit(mutation(
+      fake.engine,
+      'unrelated-edit',
+      [{ type: 'upsert', node: editedRuntime }],
+      [semantic.id],
+    ));
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(1));
+    expect(transport.execute.mock.calls[0]?.[0].operations).toEqual([{
+      type: 'patch',
+      itemId: semantic.id,
+      patches: [{
+        type: 'set',
+        path: ['transform', 'position', 'x'],
+        value: 25,
+      }],
+    }]);
+    expect((service.authoredNode(semantic.id) as TRectNode).fill)
+      .toEqual(semantic.fill);
+    expect(service.reproject(project(2))).toBe(true);
+    expect(service.revision).toBe(durableRevision);
+    expect(transport.execute).toHaveBeenCalledTimes(1);
+    acknowledgement.resolve(event('command-a', 1, [item(after, 2)]));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect((service.node(semantic.id) as TRectNode).fill).toEqual({
+      type: 'solid',
+      color: BUILTIN_THEMES[2]!.canvas.colors.green.fill,
+    });
+
+    await service.dispose();
+  });
+
+  test('reports bounded lifecycle facts and isolates a throwing observer', async () => {
+    const before = rect();
+    const after = rect('rect-a', 25);
+    const observations: TCanvasDocumentObservation[] = [];
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async (command) => event(command.commandId, 1, [item(after, 2)]),
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+      observe: (observation) => {
+        observations.push(observation);
+        if (observation.phase === 'durable-plan-prepared') {
+          throw new Error('diagnostic observer failed');
+        }
+      },
+    });
+    await service.start(fake.engine);
+
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'transaction-a',
+      [{ type: 'upsert', node: runtimeNode(after) }],
+      [after.id],
+    ))).not.toThrow();
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+
+    expect(observations.map((observation) => observation.phase)).toEqual(
+      expect.arrayContaining([
+        'reload-started',
+        'reload-completed',
+        'local-request',
+        'durable-plan-prepared',
+        'pending-queued',
+        'projection-applied',
+        'command-dispatched',
+        'acknowledgement-accepted',
+        'pending-retired',
+      ]),
+    );
+    const phases = observations.map((observation) => observation.phase);
+    expect(phases.indexOf('projection-applied')).toBeLessThan(
+      phases.indexOf('pending-queued'),
+    );
+    const plan = observations.find(
+      (observation) => observation.phase === 'durable-plan-prepared',
+    );
+    expect(plan).toMatchObject({
+      transactionId: 'transaction-a',
+      nodeIds: ['rect-a'],
+      data: {
+        operationCount: 1,
+        operationTypes: ['patch'],
+      },
+    });
+    expect(JSON.stringify(observations)).not.toContain('"size"');
+    expect(service.node(after.id)?.transform.position.x).toBe(25);
+    await service.dispose();
+  });
+
+  test('updates the local document and scene before awaiting one server command', async () => {
+    const before = rect();
+    const after = rect('rect-a', 25);
+    const acknowledgement = deferred<TCanvasItemsChangedEvent>();
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async () => acknowledgement.promise,
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+    });
+    await service.start(fake.engine);
+    fake.apply.mockClear();
+    fake.replaceRegistrations.mockClear();
+    const commands = Object.freeze([
+      { type: 'upsert', node: runtimeNode(after) },
+    ] satisfies readonly TSerializedSceneCommand[]);
+    fake.setApplyHook((received) => {
+      expect(received).toBe(commands);
+      expect(service.node(after.id)?.transform.position.x).toBe(0);
+      expect(service.pendingTransactionCount).toBe(0);
+    });
+
+    const receipt = service.commit(mutation(
+      fake.engine,
+      'transaction-a',
+      commands,
+      [after.id],
+    ));
+    fake.setApplyHook(null);
+
+    expect(receipt.projectedSceneRevision).toBe(2);
+    expect(service.node(after.id)?.transform.position.x).toBe(25);
+    expect(fake.engine.scene.get(after.id)?.transform.position.x).toBe(25);
+    expect(fake.apply).toHaveBeenCalledTimes(1);
+    expect(fake.replaceRegistrations).not.toHaveBeenCalled();
+    expect(service.pendingTransactionCount).toBe(1);
+    expect(service.revision).toBe(0);
+
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(1));
+    expect(transport.execute.mock.calls[0]?.[0]).toMatchObject({
+      commandId: 'command-a',
+      canvasId: 'canvas-a',
+      baseRevision: 0,
+      operations: [{
+        type: 'patch',
+        itemId: before.id,
+        patches: [{
+          type: 'set',
+          path: ['transform', 'position', 'x'],
+          value: 25,
+        }],
+      }],
+    });
+
+    acknowledgement.resolve(event(
+      'command-a',
+      1,
+      [item(after, 2)],
+    ));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(service.revision).toBe(1);
+    expect(service.item(after.id)?.item).toEqual(after);
+    expect(fake.apply).toHaveBeenCalledTimes(1);
+
+    await service.dispose();
+  });
+
+  test('accepts conservative affected IDs but rejects invalid or missing IDs', async () => {
+    const before = rect();
+    const after = rect('rect-a', 25);
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async (command) => event(command.commandId, 1, [item(after, 2)]),
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+    });
+    await service.start(fake.engine);
+    service.history.attach();
+    fake.apply.mockClear();
+
+    service.commit(mutation(
+      fake.engine,
+      'conservative-extra',
+      [{ type: 'upsert', node: runtimeNode(after) }],
+      ['conservative-extra', after.id],
+    ));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+
+    expect(transport.execute).toHaveBeenCalledTimes(1);
+    expect(transport.execute.mock.calls[0]?.[0].operations).toHaveLength(1);
+    expect(service.history.canUndo).toBe(true);
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'missing-net-id',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 50)) }],
+      ['conservative-extra'],
+    ))).toThrow("changed undeclared node 'rect-a'");
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'duplicate-id',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 50)) }],
+      ['rect-a', 'rect-a'],
+    ))).toThrow("affected node ID 'rect-a' is duplicated");
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'invalid-id',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 50)) }],
+      [''],
+    ))).toThrow('must contain 1–256 UTF-16 code units');
+    expect(fake.apply).toHaveBeenCalledTimes(1);
+    expect(transport.execute).toHaveBeenCalledTimes(1);
+
+    await service.dispose();
+  });
+
+  test('rejects semantic no-ops and replacement without consuming identity', async () => {
+    const before = rect();
+    const after = rect('rect-a', 25);
+    const createCommandId = vi.fn(() => 'command-a');
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async (command) => event(command.commandId, 1, [item(after, 2)]),
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId,
+    });
+    await service.start(fake.engine);
+    service.history.attach();
+    fake.apply.mockClear();
+    const initialRevision = fake.engine.scene.revision;
+
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'invalid-no-op-effects',
+      [{ type: 'upsert', node: runtimeNode(before) }],
+      [''],
+    ))).toThrow('must contain 1–256 UTF-16 code units');
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'semantic-no-op',
+      [
+        { type: 'upsert', node: runtimeNode(before) },
+        { type: 'remove', nodeId: 'missing', descendants: 'remove' },
+      ],
+      ['rect-a', 'missing', 'conservative-extra'],
+    ))).toThrow('no local document change');
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'replacement',
+      [{
+        type: 'replace-snapshot',
+        snapshot: fake.engine.scene.snapshot(),
+      }],
+      [],
+    ))).toThrow('replace-snapshot is not an incremental');
+
+    expect(fake.apply).not.toHaveBeenCalled();
+    expect(fake.engine.scene.revision).toBe(initialRevision);
+    expect(createCommandId).not.toHaveBeenCalled();
+    expect(service.pendingTransactionCount).toBe(0);
+    expect(service.history.canUndo).toBe(false);
+    expect(transport.execute).not.toHaveBeenCalled();
+
+    service.commit(mutation(
+      fake.engine,
+      'semantic-no-op',
+      [{ type: 'upsert', node: runtimeNode(after) }],
+      ['rect-a'],
+    ));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(createCommandId).toHaveBeenCalledTimes(1);
+
+    await service.dispose();
+  });
+
+  test('projects one canonical server difference after an own acknowledgement', async () => {
+    const before = rect();
+    const acknowledgement = deferred<TCanvasItemsChangedEvent>();
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async () => acknowledgement.promise,
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+    });
+    await service.start(fake.engine);
+    fake.apply.mockClear();
+
+    service.commit(mutation(
+      fake.engine,
+      'transaction-a',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 25)) }],
+      ['rect-a'],
+    ));
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(1));
+    acknowledgement.resolve(event(
+      'command-a',
+      1,
+      [item(rect('rect-a', 30), 2)],
+    ));
+
+    await vi.waitFor(() => (
+      expect(service.node('rect-a')?.transform.position.x).toBe(30)
+    ));
+    expect(fake.apply).toHaveBeenCalledTimes(2);
+    expect(service.pendingTransactionCount).toBe(0);
+
+    await service.dispose();
+  });
+
+  test('rejects stale, duplicate, reentrant, and atomically rejected projections', async () => {
+    const before = rect();
+    const acknowledgement = deferred<TCanvasItemsChangedEvent>();
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async () => acknowledgement.promise,
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+    });
+    await service.start(fake.engine);
+
+    expect(() => service.commit({
+      transactionId: 'stale',
+      basisSceneRevision: 0,
+      source: 'test',
+      commands: [{
+        type: 'reparent',
+        nodeId: 'missing',
+        parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
+      }],
+      affectedNodeIds: ['missing'],
+    })).toThrow('Stale editor transaction basis');
+
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'synthetic-layer',
+      [{
+        type: 'remove',
+        nodeId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
+        descendants: 'remove',
+      }],
+      [CANVAS_RUNTIME_CONTENT_LAYER_ID],
+    ))).toThrow('Editor mutations cannot target runtime canvas nodes.');
+
+    fake.rejectNextApply();
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'rejected',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 10)) }],
+      ['rect-a'],
+    ))).toThrow('projection rejected');
+    expect(service.node('rect-a')?.transform.position.x).toBe(0);
+    expect(service.pendingTransactionCount).toBe(0);
+    await vi.waitFor(() => expect(transport.getSnapshot).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => (
+      expect(service.projectedSceneRevision).toBe(fake.engine.scene.revision)
+    ));
+
+    const request = mutation(
+      fake.engine,
+      'accepted',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 20)) }],
+      ['rect-a'],
+    );
+    let reentrantError: unknown;
+    fake.setApplyHook(() => {
+      try {
+        service.commit({
+          ...request,
+          transactionId: 'nested',
+        });
+      } catch (error) {
+        reentrantError = error;
+      }
+    });
+    service.commit(request);
+    fake.setApplyHook(null);
+    expect(reentrantError).toMatchObject({
+      message: 'Canvas document mutation is not reentrant.',
+    });
+    expect(() => service.commit(request)).toThrow('Duplicate editor transaction ID');
+
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(1));
+    acknowledgement.resolve(event(
+      'command-a',
+      1,
+      [item(rect('rect-a', 20), 2)],
+    ));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    await service.dispose();
+  });
+
+  test('preserves projection state after reducer rejection for a valid retry', async () => {
+    const before = rect();
+    const after = rect('rect-a', 25);
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async (command) => event(command.commandId, 1, [item(after, 2)]),
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+    });
+    await service.start(fake.engine);
+    fake.apply.mockClear();
+
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'retry-after-reduction',
+      [{ type: 'reorder', nodeId: 'missing', orderKey: 'Z' }],
+      ['missing'],
+    ))).toThrow();
+    expect(service.node(before.id)?.transform.position.x).toBe(0);
+    expect(fake.apply).not.toHaveBeenCalled();
+    expect(service.pendingTransactionCount).toBe(0);
+
+    service.commit(mutation(
+      fake.engine,
+      'retry-after-reduction',
+      [{ type: 'upsert', node: runtimeNode(after) }],
+      [after.id],
+    ));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(service.node(after.id)?.transform.position.x).toBe(25);
+
+    await service.dispose();
+  });
+
+  test('routes undo through the same local-first projection and outbox', async () => {
+    const before = rect();
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async (command: TCanvasCommand) => {
+        const x = command.operations.some((operation) => (
+          operation.type === 'patch'
+          && operation.patches.some((patch) => (
+            patch.type === 'set'
+            && patch.path.join('.') === 'transform.position.x'
+            && patch.value === 25
+          ))
+        )) ? 25 : 0;
+        const revision = command.commandId === 'command-1' ? 1 : 2;
+        return event(
+          command.commandId,
+          revision,
+          [item(rect('rect-a', x), revision + 1)],
+        );
+      },
+    );
+    const fake = fakeEngine();
+    let commandSequence = 0;
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => `command-${++commandSequence}`,
+    });
+    await service.start(fake.engine);
+    service.history.attach();
+    fake.apply.mockClear();
+
+    service.commit(mutation(
+      fake.engine,
+      'transaction-a',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 25)) }],
+      ['rect-a'],
+    ));
+    expect(service.history.canUndo).toBe(true);
+    expect(service.history.undo()).toBe(true);
+    expect(service.node('rect-a')?.transform.position.x).toBe(0);
+    expect(fake.apply).toHaveBeenCalledTimes(2);
+
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(service.revision).toBe(2);
+    expect(service.history.canRedo).toBe(true);
+    await service.dispose();
+  });
+
+  test('undoes and redoes concrete paint with semantic intent through exact batches', async () => {
+    const before = rect('styled');
+    before.fill = {
+      type: 'solid',
+      color: { space: 'srgb', r: 0.2, g: 0.3, b: 0.4, a: 1 },
+    };
+    const after: TRectNode = {
+      ...before,
+      fill: {
+        type: 'solid',
+        color: BUILTIN_THEMES[0]!.canvas.colors.green.fill,
+      },
+      extensions: {
+        [CANVAS_SEMANTIC_STYLE_EXTENSION_KEY]: {
+          schemaVersion: 1, background: 'green',
+        },
+      },
+    };
+    let durableRevision = 0;
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async (command: TCanvasCommand) => {
+        durableRevision += 1;
+        const durableNode = durableRevision === 2 ? before : after;
+        return event(
+          command.commandId,
+          durableRevision,
+          [item(durableNode, durableRevision + 1)],
+        );
+      },
+    );
+    const fake = fakeEngine();
+    let commandSequence = 0;
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => `semantic-command-${++commandSequence}`,
+    });
+    await service.start(fake.engine);
+    service.history.attach();
+    fake.apply.mockClear();
+
+    service.commit(mutation(
+      fake.engine,
+      'semantic-style',
+      [{ type: 'upsert', node: runtimeNode(after) }],
+      [after.id],
+    ));
+    expect(service.authoredNode(after.id)).toMatchObject(runtimeNode(after));
+    expect(service.history.undo()).toBe(true);
+    expect(service.authoredNode(after.id)).toMatchObject(runtimeNode(before));
+    expect(service.authoredNode(after.id)
+      ?.extensions?.[CANVAS_SEMANTIC_STYLE_EXTENSION_KEY]).toBeUndefined();
+    expect(service.history.redo()).toBe(true);
+    expect(service.authoredNode(after.id)).toMatchObject(runtimeNode(after));
+    expect(fake.apply).toHaveBeenCalledTimes(3);
+
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(service.revision).toBe(3);
+    await service.dispose();
+  });
+
+  test('round-trips endpoint attachments and fixed segments through history and acknowledgements', async () => {
+    const source = rect('source');
+    const target = rect('target', 240);
+    const before = connector();
+    const after: TConnectorNode = {
+      ...before,
+      from: { type: 'point', point: { x: 25, y: 30 } },
+      to: {
+        type: 'node', nodeId: 'source', anchor: 'auto',
+        attachment: { mode: 'inside', fixedPoint: { x: 0.25, y: 0.75 } },
+      },
+      fixedSegments: [{
+        id: 'vertical-leg', start: { x: 90, y: 20 }, end: { x: 90, y: 100 },
+      }],
+    };
+    let durableRevision = 0;
+    const transport = transportWith(
+      snapshot([item(source), item(target), item(before)]),
+      async (command: TCanvasCommand) => {
+        durableRevision += 1;
+        const durable = durableRevision === 2 ? before : after;
+        return event(
+          command.commandId,
+          durableRevision,
+          [item(durable, durableRevision + 1)],
+        );
+      },
+    );
+    const fake = fakeEngine();
+    let commandSequence = 0;
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => `connector-command-${++commandSequence}`,
+    });
+    await service.start(fake.engine);
+    service.history.attach();
+
+    service.commit(mutation(
+      fake.engine,
+      'rebind-endpoints',
+      [{ type: 'upsert', node: runtimeNode(after) }],
+      [after.id],
+    ));
+    expect(service.authoredNode(after.id)).toEqual(runtimeNode(after));
+    expect(service.history.undo()).toBe(true);
+    expect(service.authoredNode(before.id)).toEqual(runtimeNode(before));
+    expect(service.history.redo()).toBe(true);
+    expect(service.authoredNode(after.id)).toEqual(runtimeNode(after));
+
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(service.revision).toBe(3);
+    expect(service.item(after.id)?.item).toEqual(after);
+    await service.dispose();
+  });
+
+  test('clears history when a remote descendant attaches to an undoable parent', async () => {
+    const parent = group();
+    const queue = eventQueue();
+    const transport = transportWith(
+      snapshot([]),
+      async (command) => event(command.commandId, 1, [item(parent)]),
+      queue,
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+    });
+    await service.start(fake.engine);
+    service.history.attach();
+
+    service.commit(mutation(
+      fake.engine,
+      'insert-parent',
+      [{ type: 'upsert', node: runtimeNode(parent) }],
+      [parent.id],
+    ));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(service.history.canUndo).toBe(true);
+
+    const remoteChild: TRectNode = {
+      ...rect('remote-child'),
+      parentId: parent.id,
+      orderKey: 'B',
+    };
+    queue.push(event('remote-child', 2, [item(remoteChild)]));
+    await vi.waitFor(() => expect(service.revision).toBe(2));
+
+    expect(service.node(remoteChild.id)?.parentId).toBe(parent.id);
+    expect(service.history.canUndo).toBe(false);
+    expect(service.history.undo()).toBe(false);
+    await service.dispose();
+  });
+
+  test('drops a coalesced undo step when an edit returns to its original value', async () => {
+    let acceptedRevision = 0;
+    const transport = transportWith(
+      snapshot([item(rect())]),
+      async (command) => {
+        acceptedRevision += 1;
+        const patchOperation = command.operations.find(
+          (operation) => operation.type === 'patch',
+        );
+        const xPatch = patchOperation?.type === 'patch'
+          ? patchOperation.patches.find((patch) => (
+            patch.type === 'set'
+            && patch.path.join('.') === 'transform.position.x'
+          ))
+          : undefined;
+        return event(
+          command.commandId,
+          acceptedRevision,
+          [item(rect('rect-a', Number(xPatch?.value ?? 0)), acceptedRevision + 1)],
+        );
+      },
+    );
+    const fake = fakeEngine();
+    let commandSequence = 0;
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => `command-${++commandSequence}`,
+    });
+    await service.start(fake.engine);
+    service.history.attach();
+
+    service.commit({
+      ...mutation(
+        fake.engine,
+        'transaction-forward',
+        [{ type: 'upsert', node: runtimeNode(rect('rect-a', 25)) }],
+        ['rect-a'],
+      ),
+      coalesceKey: 'drag-a',
+    });
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(service.history.canUndo).toBe(true);
+
+    service.commit({
+      ...mutation(
+        fake.engine,
+        'transaction-return',
+        [{ type: 'upsert', node: runtimeNode(rect('rect-a', 0)) }],
+        ['rect-a'],
+      ),
+      coalesceKey: 'drag-a',
+    });
+    expect(service.node('rect-a')?.transform.position.x).toBe(0);
+    expect(service.history.canUndo).toBe(false);
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(transport.execute).toHaveBeenCalledTimes(2);
+    await service.dispose();
+  });
+
+  test('projects a disjoint remote event and reloads on a revision gap', async () => {
+    let currentSnapshot = snapshot([]);
+    const queue = eventQueue();
+    const getSnapshot = vi.fn(async () => currentSnapshot);
+    const transport: TCanvasDocumentTransport = {
+      getSnapshot,
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
+      execute: vi.fn(async () => {
+        throw new Error('unexpected execute');
+      }),
+      subscribe: vi.fn(() => queue.iterable),
+    };
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport,
+      createCommandId: () => 'command-a',
+    });
+    await service.start(fake.engine);
+    fake.apply.mockClear();
+
+    const remote = rect('rect-remote', 40);
+    queue.push(event('remote-1', 1, [item(remote)]));
+    await vi.waitFor(() => expect(service.revision).toBe(1));
+    expect(service.node(remote.id)?.transform.position.x).toBe(40);
+    expect(fake.apply).toHaveBeenCalledTimes(1);
+
+    const authoritative = rect('rect-authoritative', 80);
+    currentSnapshot = snapshot([item(authoritative)], 3);
+    queue.push(event('remote-gap', 3, [item(authoritative)]));
+    await vi.waitFor(() => expect(getSnapshot).toHaveBeenCalledTimes(2));
+    expect(service.revision).toBe(3);
+    expect(service.node(authoritative.id)).not.toBeNull();
+    expect(service.node(remote.id)).toBeNull();
+
+    await service.dispose();
+  });
+
+  test('keeps the read model equivalent across a remote insert and local reorder', async () => {
+    const queue = eventQueue();
+    const remote = rect('rect-remote', 40);
+    const reordered: TRectNode = { ...remote, orderKey: 'Z' };
+    const transport = transportWith(
+      snapshot([]),
+      async (command) => event(
+        command.commandId,
+        2,
+        [item(reordered, 2)],
+      ),
+      queue,
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+    });
+    await service.start(fake.engine);
+    expectProjectionMatchesReadModel(service, fake.engine);
+
+    queue.push(event('remote-insert', 1, [item(remote)]));
+    await vi.waitFor(() => expect(service.revision).toBe(1));
+    expectProjectionMatchesReadModel(service, fake.engine);
+    service.commit(mutation(
+      fake.engine,
+      'reorder-remote',
+      [{ type: 'reorder', nodeId: remote.id, orderKey: 'Z' }],
+      [remote.id],
+    ));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+
+    expect(service.node(remote.id)?.orderKey).toBe('Z');
+    expect(fake.engine.scene.get(remote.id)?.orderKey).toBe('Z');
+    expectProjectionMatchesReadModel(service, fake.engine);
+    expect(transport.execute.mock.calls[0]?.[0].operations).toContainEqual({
+      type: 'reorder',
+      itemId: remote.id,
+      orderKey: 'Z',
+    });
+
+    await service.dispose();
+  });
+
+  test('accepts a semantically equal remote event without disturbing pending state', async () => {
+    const before = rect();
+    const after = rect('rect-a', 25);
+    const acknowledgement = deferred<TCanvasItemsChangedEvent>();
+    const queue = eventQueue();
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async () => acknowledgement.promise,
+      queue,
+    );
+    const fake = fakeEngine();
+    const onError = vi.fn();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+      onError,
+    });
+    await service.start(fake.engine);
+    service.history.attach();
+    fake.apply.mockClear();
+
+    service.commit(mutation(
+      fake.engine,
+      'transaction-a',
+      [{ type: 'upsert', node: runtimeNode(after) }],
+      [after.id],
+    ));
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(1));
+    expect(fake.apply).toHaveBeenCalledTimes(1);
+    expect(service.pendingTransactionCount).toBe(1);
+    expect(service.history.canUndo).toBe(true);
+
+    queue.push(event('remote-equal', 1, [item(after, 2)]));
+    await vi.waitFor(() => expect(service.revision).toBe(1));
+
+    expect(fake.apply).toHaveBeenCalledTimes(1);
+    expect(service.pendingTransactionCount).toBe(1);
+    expect(service.history.canUndo).toBe(true);
+    expect(transport.getSnapshot).toHaveBeenCalledTimes(1);
+    expect(onError).not.toHaveBeenCalled();
+
+    acknowledgement.resolve(event('command-a', 2, [item(after, 3)]));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(service.revision).toBe(2);
+    expect(fake.apply).toHaveBeenCalledTimes(1);
+
+    await service.dispose();
+  });
+
+  test('recovers before accepting a no-op event when the engine revision diverges', async () => {
+    const before = rect();
+    const queue = eventQueue();
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async () => {
+        throw new Error('unexpected execute');
+      },
+      queue,
+    );
+    const fake = fakeEngine();
+    const onError = vi.fn();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+      onError,
+    });
+    await service.start(fake.engine);
+    fake.apply.mockClear();
+
+    fake.engine.scene.apply(
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 99)) }],
+      { source: 'uncoordinated-test-write' },
+    );
+    expect(fake.engine.scene.revision).toBe(service.projectedSceneRevision + 1);
+
+    queue.push(event('remote-no-op', 1, [item(before, 2)]));
+    await vi.waitFor(() => expect(transport.getSnapshot).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => (
+      expect(service.projectedSceneRevision).toBe(fake.engine.scene.revision)
+    ));
+
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({
+      message: 'Canvas scene projection is not synchronized.',
+    }));
+    expect(service.revision).toBe(0);
+    expect(service.node(before.id)?.transform.position.x).toBe(0);
+    expect(transport.execute).not.toHaveBeenCalled();
+
+    await service.dispose();
+  });
+
+  test('reconciles a disjoint remote event while a local command is in flight', async () => {
+    const before = rect();
+    const after = rect('rect-a', 25);
+    const acknowledgement = deferred<TCanvasItemsChangedEvent>();
+    const queue = eventQueue();
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async () => acknowledgement.promise,
+      queue,
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+    });
+    await service.start(fake.engine);
+    fake.apply.mockClear();
+
+    service.commit(mutation(
+      fake.engine,
+      'transaction-a',
+      [{ type: 'upsert', node: runtimeNode(after) }],
+      [after.id],
+    ));
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(1));
+
+    const remote = rect('rect-remote', 40);
+    queue.push(event('remote-1', 1, [item(remote)]));
+    await vi.waitFor(() => expect(service.revision).toBe(1));
+    expect(service.node(after.id)?.transform.position.x).toBe(25);
+    expect(service.node(remote.id)?.transform.position.x).toBe(40);
+    expect(service.pendingTransactionCount).toBe(1);
+    expect(fake.apply).toHaveBeenCalledTimes(2);
+
+    acknowledgement.resolve(event('command-a', 2, [item(after, 2)]));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(service.revision).toBe(2);
+    expect(fake.apply).toHaveBeenCalledTimes(2);
+
+    await service.dispose();
+  });
+
+  test('reloads authoritative state and clears history after server rejection', async () => {
+    const before = rect();
+    const errors: unknown[] = [];
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async () => {
+        throw new Error('server rejected');
+      },
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+      onError: (error) => errors.push(error),
+    });
+    await service.start(fake.engine);
+    service.history.attach();
+
+    service.commit(mutation(
+      fake.engine,
+      'transaction-a',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 25)) }],
+      ['rect-a'],
+    ));
+    await vi.waitFor(() => expect(transport.getSnapshot).toHaveBeenCalledTimes(2));
+    expect(service.node('rect-a')?.transform.position.x).toBe(0);
+    expect(service.pendingTransactionCount).toBe(0);
+    expect(service.history.canUndo).toBe(false);
+    expect(errors).toHaveLength(1);
+
+    await service.dispose();
+  });
+
+  test('isolates throwing history and error listeners without stranding a commit', async () => {
+    const before = rect();
+    const after = rect('rect-a', 25);
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async (command) => event(command.commandId, 1, [item(after, 2)]),
+    );
+    const fake = fakeEngine();
+    const onError = vi.fn(() => {
+      throw new Error('host error listener failed');
+    });
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+      onError,
+    });
+    await service.start(fake.engine);
+    service.history.subscribe(() => {
+      throw new Error('history listener failed');
+    });
+
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'transaction-a',
+      [{ type: 'upsert', node: runtimeNode(after) }],
+      [after.id],
+    ))).not.toThrow();
+
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'history listener failed' }),
+    );
+    expect(service.node(after.id)?.transform.position.x).toBe(25);
+    await service.dispose();
+  });
+
+  test('rejects commits while an authoritative recovery snapshot is deferred', async () => {
+    const before = rect();
+    const recoverySnapshot = deferred<TCanvasSnapshot>();
+    const getSnapshot = vi.fn()
+      .mockResolvedValueOnce(snapshot([item(before)]))
+      .mockImplementationOnce(async () => recoverySnapshot.promise);
+    const transport: TCanvasDocumentTransport = {
+      getSnapshot,
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
+      execute: vi.fn(async () => {
+        throw new Error('server rejected');
+      }),
+      subscribe: vi.fn(() => eventQueue().iterable),
+    };
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport,
+      createCommandId: () => 'command-a',
+      projectNode: projectRectRed(0.25),
+    });
+    await service.start(fake.engine);
+
+    service.commit(mutation(
+      fake.engine,
+      'transaction-a',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 25)) }],
+      ['rect-a'],
+    ));
+    await vi.waitFor(() => expect(getSnapshot).toHaveBeenCalledTimes(2));
+
+    expect(service.reproject(projectRectRed(0.75))).toBe(false);
+
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'transaction-during-recovery',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 50)) }],
+      ['rect-a'],
+    ))).toThrow('Canvas document reconciliation is in progress.');
+
+    recoverySnapshot.resolve(snapshot([item(before)], 1));
+    await vi.waitFor(() => expect(service.revision).toBe(1));
+    expect(service.node('rect-a')?.transform.position.x).toBe(0);
+    expect((service.node('rect-a') as TRectNode).fill).toEqual({
+      type: 'solid',
+      color: { space: 'srgb', r: 0.75, g: 0, b: 0, a: 1 },
+    });
+    expect(service.pendingTransactionCount).toBe(0);
+    await service.dispose();
+  });
+
+  test('schedules reconciliation after a projection revision mismatch and blocks commits', async () => {
+    const recoverySnapshot = deferred<TCanvasSnapshot>();
+    const getSnapshot = vi.fn()
+      .mockResolvedValueOnce(snapshot([item(rect())]))
+      .mockImplementationOnce(async () => recoverySnapshot.promise);
+    const transport: TCanvasDocumentTransport = {
+      getSnapshot,
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
+      execute: vi.fn(async () => {
+        throw new Error('mismatched projection must not execute');
+      }),
+      subscribe: vi.fn(() => eventQueue().iterable),
+    };
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport,
+      createCommandId: () => 'command-a',
+    });
+    await service.start(fake.engine);
+    fake.setNextApplyRevisionDelta(2);
+
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'transaction-mismatch',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 25)) }],
+      ['rect-a'],
+    ))).toThrow(
+      'Canvas scene projection did not produce exactly one successor revision.',
+    );
+    await vi.waitFor(() => expect(getSnapshot).toHaveBeenCalledTimes(2));
+
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'transaction-blocked',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 50)) }],
+      ['rect-a'],
+    ))).toThrow('Canvas document reconciliation is in progress.');
+    expect(transport.execute).not.toHaveBeenCalled();
+
+    recoverySnapshot.resolve(snapshot([item(rect())], 1));
+    await vi.waitFor(() => expect(service.revision).toBe(1));
+    expect(service.node('rect-a')?.transform.position.x).toBe(0);
+    await service.dispose();
+  });
+
+  test('keeps commits blocked after one failed recovery snapshot and retries to success', async () => {
+    const retrySnapshot = deferred<TCanvasSnapshot>();
+    let snapshotRequest = 0;
+    const getSnapshot = vi.fn(async () => {
+      snapshotRequest += 1;
+      if (snapshotRequest === 1) return snapshot([item(rect())]);
+      if (snapshotRequest === 2) throw new Error('temporary snapshot failure');
+      return retrySnapshot.promise;
+    });
+    const transport: TCanvasDocumentTransport = {
+      getSnapshot,
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
+      execute: vi.fn(async () => {
+        throw new Error('server rejected');
+      }),
+      subscribe: vi.fn(() => eventQueue().iterable),
+    };
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport,
+      createCommandId: () => 'command-a',
+    });
+    await service.start(fake.engine);
+
+    service.commit(mutation(
+      fake.engine,
+      'transaction-a',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 25)) }],
+      ['rect-a'],
+    ));
+    await vi.waitFor(
+      () => expect(getSnapshot).toHaveBeenCalledTimes(3),
+      { timeout: 1_500 },
+    );
+
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'transaction-during-retry',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 50)) }],
+      ['rect-a'],
+    ))).toThrow('Canvas document reconciliation is in progress.');
+
+    retrySnapshot.resolve(snapshot([item(rect())], 1));
+    await vi.waitFor(() => (
+      expect(service.node('rect-a')?.transform.position.x).toBe(0)
+    ));
+    expect(service.revision).toBe(1);
+    expect(service.pendingTransactionCount).toBe(0);
+    await service.dispose();
+  });
+
+  test('retries recovery while durable registration replacement fails', async () => {
+    const durableImage: TImageNode = {
+      id: 'image-durable',
+      kind: 'image',
+      parentId: null,
+      orderKey: 'A',
+      transform,
+      resourceId: 'resource-durable',
+      size: { width: 80, height: 60 },
+      extensions: {
+        [CANVAS_IMAGE_EXTENSION_KEY]: {
+          schemaVersion: 1,
+          url: 'https://media.test/durable.png',
+          mimeType: 'image/png',
+        },
+      },
+    };
+    const successfulRetry = deferred<TCanvasSnapshot>();
+    let snapshotRequest = 0;
+    const getSnapshot = vi.fn(async () => {
+      snapshotRequest += 1;
+      if (snapshotRequest === 1) return snapshot([]);
+      if (snapshotRequest === 2) return snapshot([item(durableImage)], 1);
+      return successfulRetry.promise;
+    });
+    const queue = eventQueue();
+    const transport: TCanvasDocumentTransport = {
+      getSnapshot,
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
+      execute: vi.fn(async () => {
+        throw new Error('unexpected execute');
+      }),
+      subscribe: vi.fn(() => queue.iterable),
+    };
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport,
+      createCommandId: () => 'command-a',
+    });
+    await service.start(fake.engine);
+    fake.rejectNextRegistrationReplace();
+
+    queue.push({
+      type: 'resync-required',
+      canvasId: 'canvas-a',
+      revision: 1,
+    });
+    await vi.waitFor(
+      () => expect(getSnapshot).toHaveBeenCalledTimes(3),
+      { timeout: 1_500 },
+    );
+
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'transaction-during-registration-retry',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a')) }],
+      ['rect-a'],
+    ))).toThrow('Canvas document reconciliation is in progress.');
+
+    successfulRetry.resolve(snapshot([item(durableImage)], 1));
+    await vi.waitFor(() => expect(service.revision).toBe(1));
+    expect(fake.replaceRegistrations).toHaveBeenLastCalledWith([{
+      descriptor: {
+        id: 'resource-durable',
+        type: 'image',
+        url: 'https://media.test/durable.png',
+        mimeType: 'image/png',
+      },
+    }]);
+    expect(service.node(durableImage.id)).not.toBeNull();
+    await service.dispose();
+  });
+
+  test('resync reloads around a never-settling execute and dispose stays bounded', async () => {
+    const neverSettles = deferred<TCanvasItemsChangedEvent>();
+    const queue = eventQueue();
+    let authoritative = snapshot([item(rect())]);
+    const getSnapshot = vi.fn(async () => authoritative);
+    const transport: TCanvasDocumentTransport = {
+      getSnapshot,
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
+      execute: vi.fn(async () => neverSettles.promise),
+      subscribe: vi.fn(() => queue.iterable),
+    };
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport,
+      createCommandId: () => 'command-a',
+    });
+    await service.start(fake.engine);
+
+    service.commit(mutation(
+      fake.engine,
+      'transaction-a',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 25)) }],
+      ['rect-a'],
+    ));
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(1));
+
+    authoritative = snapshot([item(rect('rect-a', 5), 2)], 1);
+    queue.push({
+      type: 'resync-required',
+      canvasId: 'canvas-a',
+      revision: 1,
+    });
+    await vi.waitFor(() => expect(getSnapshot).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(service.revision).toBe(1));
+    expect(service.node('rect-a')?.transform.position.x).toBe(5);
+    expect(service.pendingTransactionCount).toBe(0);
+
+    const outcome = await Promise.race([
+      service.dispose().then(() => 'disposed' as const),
+      new Promise<'timeout'>((resolve) => {
+        setTimeout(() => resolve('timeout'), 100);
+      }),
+    ]);
+    expect(outcome).toBe('disposed');
+  });
+
+  test('reloads when a remote parent deletion omits an attached child', async () => {
+    const parent = group('parent');
+    const child: TRectNode = {
+      ...rect('child'),
+      parentId: parent.id,
+    };
+    const queue = eventQueue();
+    let authoritative = snapshot([item(parent), item(child)]);
+    const transport = transportWith(
+      authoritative,
+      async () => {
+        throw new Error('unexpected execute');
+      },
+      queue,
+    );
+    transport.getSnapshot.mockImplementation(async () => authoritative);
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+    });
+    await service.start(fake.engine);
+
+    authoritative = snapshot([], 1);
+    queue.push(event('remote-delete', 1, [], [parent.id]));
+    await vi.waitFor(() => expect(transport.getSnapshot).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(service.revision).toBe(1));
+
+    expect(service.item(parent.id)).toBeNull();
+    expect(service.item(child.id)).toBeNull();
+    expect(service.node(parent.id)).toBeNull();
+    expect(service.node(child.id)).toBeNull();
+    expect(fake.engine.scene.get(parent.id)).toBeNull();
+    expect(fake.engine.scene.get(child.id)).toBeNull();
+    await service.dispose();
+  });
+
+  test('remote child reparent plus parent deletion retains the child', async () => {
+    const parent = group('parent');
+    const child: TRectNode = {
+      ...rect('child'),
+      parentId: parent.id,
+    };
+    const reparentedChild: TRectNode = {
+      ...child,
+      parentId: null,
+    };
+    const queue = eventQueue();
+    const transport = transportWith(
+      snapshot([item(parent), item(child)]),
+      async () => {
+        throw new Error('unexpected execute');
+      },
+      queue,
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+    });
+    await service.start(fake.engine);
+
+    queue.push(event(
+      'remote-reparent-delete',
+      1,
+      [item(reparentedChild, 2)],
+      [parent.id],
+    ));
+    await vi.waitFor(() => expect(service.revision).toBe(1));
+
+    expect(service.item(parent.id)).toBeNull();
+    expect(service.item(child.id)?.item.parentId).toBeNull();
+    expect(service.node(parent.id)).toBeNull();
+    expect(service.node(child.id)?.parentId).toBe(
+      CANVAS_RUNTIME_CONTENT_LAYER_ID,
+    );
+    expect(fake.engine.scene.get(parent.id)).toBeNull();
+    expect(fake.engine.scene.get(child.id)?.parentId).toBe(
+      CANVAS_RUNTIME_CONTENT_LAYER_ID,
+    );
+    await service.dispose();
+  });
+
+  test.each([
+    {
+      label: 'wrong',
+      acknowledgement: event(
+        'command-a',
+        1,
+        [item(rect('rect-unexpected', 25), 2)],
+      ),
+    },
+    {
+      label: 'missing',
+      acknowledgement: event('command-a', 1, []),
+    },
+  ])('recovers when an acknowledgement has $label targets', async ({
+    acknowledgement,
+  }) => {
+    const before = rect();
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async () => acknowledgement,
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+    });
+    await service.start(fake.engine);
+
+    service.commit(mutation(
+      fake.engine,
+      'transaction-a',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 25)) }],
+      ['rect-a'],
+    ));
+
+    await vi.waitFor(() => expect(transport.getSnapshot).toHaveBeenCalledTimes(2));
+    expect(service.pendingTransactionCount).toBe(0);
+    expect(service.node('rect-a')?.transform.position.x).toBe(0);
+    expect(service.node('rect-unexpected')).toBeNull();
+    await service.dispose();
+  });
+
+  test('clears overlapping local history when a remote event wins', async () => {
+    const before = rect();
+    const after = rect('rect-a', 25);
+    const queue = eventQueue();
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async (command) => event(command.commandId, 1, [item(after, 2)]),
+      queue,
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+    });
+    await service.start(fake.engine);
+    service.history.attach();
+
+    service.commit(mutation(
+      fake.engine,
+      'transaction-a',
+      [{ type: 'upsert', node: runtimeNode(after) }],
+      ['rect-a'],
+    ));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(service.history.canUndo).toBe(true);
+
+    queue.push(event('remote-overlap', 2, [item(rect('rect-a', 50), 3)]));
+    await vi.waitFor(() => (
+      expect(service.node('rect-a')?.transform.position.x).toBe(50)
+    ));
+    expect(service.history.canUndo).toBe(false);
+    await service.dispose();
+  });
+
+  test('rejects a generic source-less image mutation', async () => {
+    const transport = transportWith(
+      snapshot([]),
+      async () => {
+        throw new Error('source-less image must not execute');
+      },
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+    });
+    await service.start(fake.engine);
+    const node: TImageNode = {
+      id: 'image-a',
+      kind: 'image',
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
+      orderKey: 'A',
+      transform,
+      resourceId: 'resource-a',
+      size: { width: 80, height: 60 },
+    };
+
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'source-less-image',
+      [{ type: 'upsert', node }],
+      [node.id],
+    ))).toThrow("Image node 'image-a' has no durable Omnidraw image descriptor.");
+    expect(fake.apply).toHaveBeenCalledTimes(0);
+    expect(transport.execute).not.toHaveBeenCalled();
+    expect(service.pendingTransactionCount).toBe(0);
+    await service.dispose();
+  });
+
+  test('rejects a prepared import with an unmatched extra image upsert', async () => {
+    const imagePort = {
+      uploadImage: vi.fn(async () => ({ url: 'https://media.test/image.png' })),
+      cloneImage: vi.fn(async ({ url }: { url: string }) => ({ url })),
+      deleteImage: vi.fn(async () => ({ ok: true as const })),
+    };
+    const transport = transportWith(
+      snapshot([]),
+      async () => {
+        throw new Error('invalid prepared image must not execute');
+      },
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+      image: imagePort,
+    });
+    await service.start(fake.engine);
+    const imageA: TImageNode = {
+      id: 'image-a',
+      kind: 'image',
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
+      orderKey: 'A',
+      transform,
+      resourceId: 'resource-a',
+      size: { width: 80, height: 60 },
+    };
+    const imageB: TImageNode = {
+      ...imageA,
+      id: 'image-b',
+      resourceId: 'resource-b',
+      orderKey: 'B',
+    };
+
+    expect(() => service.commitPrepared({
+      importId: 'import-a',
+      source: 'drop',
+      mutation: mutation(
+        fake.engine,
+        'image-transaction-a',
+        [
+          { type: 'upsert', node: imageA },
+          { type: 'upsert', node: imageB },
+        ],
+        [imageA.id, imageB.id],
+      ),
+      images: [{
+        node: imageA,
+        blob: new Blob(['image'], { type: 'image/png' }),
+        mimeType: 'image/png',
+        intrinsicSize: { width: 80, height: 60 },
+      }],
+    })).toThrow(
+      'Prepared image entries and image upserts must correspond one-to-one.',
+    );
+    expect(fake.retain).not.toHaveBeenCalled();
+    expect(fake.apply).toHaveBeenCalledTimes(0);
+    expect(transport.execute).not.toHaveBeenCalled();
+    await service.dispose();
+  });
+
+  test('rejects non-import commands in a prepared image mutation', async () => {
+    const before = rect();
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async () => {
+        throw new Error('invalid prepared image must not execute');
+      },
+    );
+    const fake = fakeEngine();
+    fake.seedResource('resource-a');
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+      image: {
+        uploadImage: vi.fn(async () => ({ url: 'https://media.test/image.png' })),
+        cloneImage: vi.fn(async ({ url }: { url: string }) => ({ url })),
+        deleteImage: vi.fn(async () => ({ ok: true as const })),
+      },
+    });
+    await service.start(fake.engine);
+    fake.apply.mockClear();
+    const imageNode: TImageNode = {
+      id: 'image-a',
+      kind: 'image',
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
+      orderKey: 'B',
+      transform,
+      resourceId: 'resource-a',
+      size: { width: 80, height: 60 },
+    };
+
+    expect(() => service.commitPrepared({
+      importId: 'import-a',
+      source: 'drop',
+      mutation: mutation(
+        fake.engine,
+        'image-transaction-a',
+        [
+          { type: 'remove', nodeId: before.id },
+          { type: 'upsert', node: imageNode },
+        ],
+        [before.id, imageNode.id],
+      ),
+      images: [{
+        node: imageNode,
+        blob: new Blob(['image'], { type: 'image/png' }),
+        mimeType: 'image/png',
+        intrinsicSize: { width: 80, height: 60 },
+      }],
+    })).toThrow(
+      'Prepared image mutations may contain only image upserts and sibling reorders.',
+    );
+    expect(fake.retain).not.toHaveBeenCalled();
+    expect(fake.apply).not.toHaveBeenCalled();
+    expect(transport.execute).not.toHaveBeenCalled();
+    await service.dispose();
+  });
+
+  test('rejects a prepared image resource identity already used by the document', async () => {
+    const existingImage: TImageNode = {
+      id: 'image-existing',
+      kind: 'image',
+      parentId: null,
+      orderKey: 'A',
+      transform,
+      resourceId: 'resource-a',
+      size: { width: 80, height: 60 },
+      extensions: {
+        [CANVAS_IMAGE_EXTENSION_KEY]: {
+          schemaVersion: 1,
+          url: 'https://media.test/existing.png',
+          mimeType: 'image/png',
+        },
+      },
+    };
+    const transport = transportWith(
+      snapshot([item(existingImage)]),
+      async () => {
+        throw new Error('duplicate resource must not execute');
+      },
+    );
+    const fake = fakeEngine();
+    fake.seedResource('resource-a');
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+      image: {
+        uploadImage: vi.fn(async () => ({ url: 'https://media.test/image.png' })),
+        cloneImage: vi.fn(async ({ url }: { url: string }) => ({ url })),
+        deleteImage: vi.fn(async () => ({ ok: true as const })),
+      },
+    });
+    await service.start(fake.engine);
+    const imageNode: TImageNode = {
+      ...existingImage,
+      id: 'image-new',
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
+      orderKey: 'B',
+      extensions: undefined,
+    };
+
+    expect(() => service.commitPrepared({
+      importId: 'import-a',
+      source: 'drop',
+      mutation: mutation(
+        fake.engine,
+        'image-transaction-a',
+        [{ type: 'upsert', node: imageNode }],
+        [imageNode.id],
+      ),
+      images: [{
+        node: imageNode,
+        blob: new Blob(['image'], { type: 'image/png' }),
+        mimeType: 'image/png',
+        intrinsicSize: { width: 80, height: 60 },
+      }],
+    })).toThrow("Duplicate prepared image resource ID 'resource-a'.");
+    expect(fake.retain).not.toHaveBeenCalled();
+    expect(transport.execute).not.toHaveBeenCalled();
+    await service.dispose();
+  });
+
+  test('accepts Cangine sibling reorders alongside prepared image upserts', async () => {
+    const before = rect();
+    const upload = deferred<Readonly<{ url: string }>>();
+    const transport = transportWith(
+      snapshot([item(before)]),
+      async () => {
+        throw new Error('media-gated import must not execute yet');
+      },
+    );
+    const fake = fakeEngine();
+    fake.seedResource('resource-a');
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+      image: {
+        uploadImage: vi.fn(async () => upload.promise),
+        cloneImage: vi.fn(async ({ url }: { url: string }) => ({ url })),
+        deleteImage: vi.fn(async () => ({ ok: true as const })),
+      },
+    });
+    await service.start(fake.engine);
+    fake.apply.mockClear();
+    const imageNode: TImageNode = {
+      id: 'image-a',
+      kind: 'image',
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
+      orderKey: 'B',
+      transform,
+      resourceId: 'resource-a',
+      size: { width: 80, height: 60 },
+    };
+
+    expect(service.commitPrepared({
+      importId: 'import-a',
+      source: 'drop',
+      mutation: mutation(
+        fake.engine,
+        'image-transaction-a',
+        [
+          { type: 'reorder', nodeId: before.id, orderKey: 'AA' },
+          { type: 'upsert', node: imageNode },
+        ],
+        [imageNode.id, before.id],
+      ),
+      images: [{
+        node: imageNode,
+        blob: new Blob(['image'], { type: 'image/png' }),
+        mimeType: 'image/png',
+        intrinsicSize: { width: 80, height: 60 },
+      }],
+    })).toEqual({ projectedSceneRevision: 2 });
+    expect(service.node(before.id)?.orderKey).toBe('AA');
+    expect(service.node(imageNode.id)).not.toBeNull();
+    expect(fake.apply).toHaveBeenCalledTimes(1);
+    expect(transport.execute).not.toHaveBeenCalled();
+    await service.dispose();
+  });
+
+  test('adopts a prepared Blob synchronously and media-gates persistence', async () => {
+    const upload = deferred<Readonly<{ url: string }>>();
+    const imagePort = {
+      uploadImage: vi.fn(async () => upload.promise),
+      cloneImage: vi.fn(async ({ url }: { url: string }) => ({ url })),
+      deleteImage: vi.fn(async () => ({ ok: true as const })),
+    };
+    const transport = transportWith(
+      snapshot([]),
+      async (command: TCanvasCommand) => {
+        const insertion = command.operations.find(
+          (operation) => operation.type === 'insert',
+        );
+        if (insertion?.type !== 'insert') throw new Error('missing image insert');
+        return event(command.commandId, 1, [item(insertion.item)]);
+      },
+    );
+    const fake = fakeEngine();
+    fake.seedResource('resource-a');
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+      image: imagePort,
+    });
+    await service.start(fake.engine);
+    fake.apply.mockClear();
+    const node: TImageNode = {
+      id: 'image-a',
+      kind: 'image',
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
+      orderKey: 'A',
+      transform,
+      resourceId: 'resource-a',
+      size: { width: 80, height: 60 },
+    };
+    const request: TPreparedImageImportRequest = {
+      importId: 'import-a',
+      source: 'clipboard',
+      mutation: mutation(
+        fake.engine,
+        'image-transaction-a',
+        [{ type: 'upsert', node }],
+        [node.id],
+        'cangine-editor:clipboard-image-paste',
+      ),
+      images: [{
+        node,
+        blob: new Blob(['image'], { type: 'image/png' }),
+        mimeType: 'image/png',
+        intrinsicSize: { width: 80, height: 60 },
+      }],
+    };
+
+    const receipt = service.commitPrepared(request);
+
+    expect(receipt.projectedSceneRevision).toBe(2);
+    expect(fake.retain).toHaveBeenCalledWith(
+      'resource-a',
+      'omnidraw:document-images',
+    );
+    expect(service.node(node.id)).not.toBeNull();
+    expect(fake.apply).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(imagePort.uploadImage).toHaveBeenCalledTimes(1));
+    expect(transport.execute).not.toHaveBeenCalled();
+
+    upload.resolve({ url: 'https://media.test/image-a.png' });
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(1));
+    const command = transport.execute.mock.calls[0]?.[0] as TCanvasCommand;
+    const insertion = command.operations.find(
+      (operation) => operation.type === 'insert',
+    );
+    expect(insertion).toMatchObject({
+      type: 'insert',
+      item: {
+        id: 'image-a',
+        parentId: null,
+        extensions: {
+          [CANVAS_IMAGE_EXTENSION_KEY]: {
+            schemaVersion: 1,
+            url: 'https://media.test/image-a.png',
+            mimeType: 'image/png',
+          },
+        },
+      },
+    });
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+    expect(fake.apply).toHaveBeenCalledTimes(2);
+    expect(imagePort.deleteImage).not.toHaveBeenCalled();
+
+    await service.dispose();
+    expect(fake.release).toHaveBeenCalledWith(
+      'resource-a',
+      'omnidraw:document-images',
+    );
+  });
+
+  test('rolls back a failed prepared upload without persisting a source-less row', async () => {
+    const errors: unknown[] = [];
+    const imagePort = {
+      uploadImage: vi.fn(async () => {
+        throw new Error('upload failed');
+      }),
+      cloneImage: vi.fn(async ({ url }: { url: string }) => ({ url })),
+      deleteImage: vi.fn(async () => ({ ok: true as const })),
+    };
+    const transport = transportWith(
+      snapshot([]),
+      async () => {
+        throw new Error('source-less image must not execute');
+      },
+    );
+    const fake = fakeEngine();
+    fake.seedResource('resource-a');
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+      image: imagePort,
+      onError: (error) => errors.push(error),
+    });
+    await service.start(fake.engine);
+    const node: TImageNode = {
+      id: 'image-a',
+      kind: 'image',
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
+      orderKey: 'A',
+      transform,
+      resourceId: 'resource-a',
+      size: { width: 80, height: 60 },
+    };
+
+    service.commitPrepared({
+      importId: 'import-a',
+      source: 'drop',
+      mutation: mutation(
+        fake.engine,
+        'image-transaction-a',
+        [{ type: 'upsert', node }],
+        [node.id],
+      ),
+      images: [{
+        node,
+        blob: new Blob(['image'], { type: 'image/png' }),
+        mimeType: 'image/png',
+        intrinsicSize: { width: 80, height: 60 },
+      }],
+    });
+
+    await vi.waitFor(() => expect(transport.getSnapshot).toHaveBeenCalledTimes(2));
+    expect(transport.execute).not.toHaveBeenCalled();
+    expect(service.node(node.id)).toBeNull();
+    expect(service.pendingTransactionCount).toBe(0);
+    expect(fake.release).toHaveBeenCalledWith(
+      'resource-a',
+      'omnidraw:document-images',
+    );
+    expect(errors).toHaveLength(1);
+
+    await service.dispose();
+  });
+
+  test('reloads after a later multi-image upload fails even when uploaded-media deletion never settles', async () => {
+    const neverDeleted = deferred<Readonly<{ ok: true }>>();
+    const imagePort = {
+      uploadImage: vi.fn()
+        .mockResolvedValueOnce({ url: 'https://media.test/image-a.png' })
+        .mockRejectedValueOnce(new Error('second upload failed')),
+      cloneImage: vi.fn(async ({ url }: { url: string }) => ({ url })),
+      deleteImage: vi.fn(async () => neverDeleted.promise),
+    };
+    const transport = transportWith(
+      snapshot([]),
+      async () => {
+        throw new Error('failed multi-image import must not execute');
+      },
+    );
+    const fake = fakeEngine();
+    fake.seedResource('resource-a');
+    fake.seedResource('resource-b');
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+      image: imagePort,
+    });
+    await service.start(fake.engine);
+    const imageA: TImageNode = {
+      id: 'image-a',
+      kind: 'image',
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
+      orderKey: 'A',
+      transform,
+      resourceId: 'resource-a',
+      size: { width: 80, height: 60 },
+    };
+    const imageB: TImageNode = {
+      ...imageA,
+      id: 'image-b',
+      resourceId: 'resource-b',
+      orderKey: 'B',
+    };
+
+    service.commitPrepared({
+      importId: 'import-a',
+      source: 'drop',
+      mutation: mutation(
+        fake.engine,
+        'image-transaction-a',
+        [
+          { type: 'upsert', node: imageA },
+          { type: 'upsert', node: imageB },
+        ],
+        [imageA.id, imageB.id],
+      ),
+      images: [
+        {
+          node: imageA,
+          blob: new Blob(['image-a'], { type: 'image/png' }),
+          mimeType: 'image/png',
+          intrinsicSize: { width: 80, height: 60 },
+        },
+        {
+          node: imageB,
+          blob: new Blob(['image-b'], { type: 'image/png' }),
+          mimeType: 'image/png',
+          intrinsicSize: { width: 80, height: 60 },
+        },
+      ],
+    });
+
+    await vi.waitFor(() => expect(imagePort.uploadImage).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(imagePort.deleteImage).toHaveBeenCalledWith({
+      url: 'https://media.test/image-a.png',
+    }));
+    await vi.waitFor(() => (
+      expect(transport.getSnapshot).toHaveBeenCalledTimes(2)
+    ));
+    expect(transport.execute).not.toHaveBeenCalled();
+    expect(service.pendingTransactionCount).toBe(0);
+    expect(service.node(imageA.id)).toBeNull();
+    expect(service.node(imageB.id)).toBeNull();
+    await service.dispose();
+  });
+
+  test('interrupts a partial prepared upload and deletes every completed upload on disposal', async () => {
+    const secondUpload = deferred<Readonly<{ url: string }>>();
+    const imagePort = {
+      uploadImage: vi.fn()
+        .mockResolvedValueOnce({ url: 'https://media.test/image-a.png' })
+        .mockImplementationOnce(async () => secondUpload.promise),
+      cloneImage: vi.fn(async ({ url }: { url: string }) => ({ url })),
+      deleteImage: vi.fn(async () => ({ ok: true as const })),
+    };
+    const transport = transportWith(
+      snapshot([]),
+      async () => {
+        throw new Error('interrupted prepared import must not execute');
+      },
+    );
+    const fake = fakeEngine();
+    fake.seedResource('resource-a');
+    fake.seedResource('resource-b');
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+      image: imagePort,
+    });
+    await service.start(fake.engine);
+    const imageA: TImageNode = {
+      id: 'image-a',
+      kind: 'image',
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
+      orderKey: 'A',
+      transform,
+      resourceId: 'resource-a',
+      size: { width: 80, height: 60 },
+    };
+    const imageB: TImageNode = {
+      ...imageA,
+      id: 'image-b',
+      resourceId: 'resource-b',
+      orderKey: 'B',
+    };
+
+    service.commitPrepared({
+      importId: 'import-a',
+      source: 'drop',
+      mutation: mutation(
+        fake.engine,
+        'image-transaction-a',
+        [
+          { type: 'upsert', node: imageA },
+          { type: 'upsert', node: imageB },
+        ],
+        [imageA.id, imageB.id],
+      ),
+      images: [
+        {
+          node: imageA,
+          blob: new Blob(['image-a'], { type: 'image/png' }),
+          mimeType: 'image/png',
+          intrinsicSize: { width: 80, height: 60 },
+        },
+        {
+          node: imageB,
+          blob: new Blob(['image-b'], { type: 'image/png' }),
+          mimeType: 'image/png',
+          intrinsicSize: { width: 80, height: 60 },
+        },
+      ],
+    });
+    await vi.waitFor(() => expect(imagePort.uploadImage).toHaveBeenCalledTimes(2));
+
+    await service.dispose();
+
+    expect(transport.execute).not.toHaveBeenCalled();
+    expect(imagePort.deleteImage).toHaveBeenCalledTimes(1);
+    expect(imagePort.deleteImage).toHaveBeenCalledWith({
+      url: 'https://media.test/image-a.png',
+    });
+    expect(fake.release).toHaveBeenCalledWith(
+      'resource-a',
+      'omnidraw:document-images',
+    );
+    expect(fake.release).toHaveBeenCalledWith(
+      'resource-b',
+      'omnidraw:document-images',
+    );
+  });
+
+  test('retains promoted media across resync while its persistence outcome is unknown', async () => {
+    const acknowledgement = deferred<TCanvasItemsChangedEvent>();
+    const imagePort = {
+      uploadImage: vi.fn(async () => ({
+        url: 'https://media.test/image-a.png',
+      })),
+      cloneImage: vi.fn(async ({ url }: { url: string }) => ({ url })),
+      deleteImage: vi.fn(async () => ({ ok: true as const })),
+    };
+    const queue = eventQueue();
+    const transport = transportWith(
+      snapshot([]),
+      async () => acknowledgement.promise,
+      queue,
+    );
+    const fake = fakeEngine();
+    fake.seedResource('resource-a');
+    let idSequence = 0;
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => `command-${++idSequence}`,
+      image: imagePort,
+    });
+    await service.start(fake.engine);
+    const imageNode: TImageNode = {
+      id: 'image-a',
+      kind: 'image',
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
+      orderKey: 'A',
+      transform,
+      resourceId: 'resource-a',
+      size: { width: 80, height: 60 },
+    };
+
+    service.commitPrepared({
+      importId: 'import-a',
+      source: 'clipboard',
+      mutation: mutation(
+        fake.engine,
+        'image-transaction-a',
+        [{ type: 'upsert', node: imageNode }],
+        [imageNode.id],
+      ),
+      images: [{
+        node: imageNode,
+        blob: new Blob(['image'], { type: 'image/png' }),
+        mimeType: 'image/png',
+        intrinsicSize: { width: 80, height: 60 },
+      }],
+    });
+
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(1));
+    const command = transport.execute.mock.calls[0]![0];
+    const insertion = command.operations.find(
+      (operation) => operation.type === 'insert',
+    );
+    if (insertion?.type !== 'insert') throw new Error('missing image insert');
+    expect(insertion.item.extensions).toMatchObject({
+      [CANVAS_IMAGE_EXTENSION_KEY]: {
+        url: 'https://media.test/image-a.png',
+      },
+    });
+
+    queue.push({
+      type: 'resync-required',
+      canvasId: 'canvas-a',
+      revision: 0,
+    });
+    await vi.waitFor(() => expect(transport.getSnapshot).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(fake.replace).toHaveBeenCalledTimes(2));
+    expect(imagePort.deleteImage).not.toHaveBeenCalled();
+
+    acknowledgement.resolve(event(
+      command.commandId,
+      1,
+      [item(insertion.item, 1)],
+    ));
+    await vi.waitFor(() => expect(service.revision).toBe(1));
+    expect(service.node(imageNode.id)).toMatchObject({
+      id: imageNode.id,
+      extensions: {
+        [CANVAS_IMAGE_EXTENSION_KEY]: {
+          schemaVersion: 1,
+          url: 'https://media.test/image-a.png',
+          mimeType: 'image/png',
+        },
+      },
+    });
+    expect(fake.engine.scene.get(imageNode.id)).toMatchObject({
+      id: imageNode.id,
+      extensions: {
+        [CANVAS_IMAGE_EXTENSION_KEY]: {
+          url: 'https://media.test/image-a.png',
+        },
+      },
+    });
+    expect(imagePort.deleteImage).not.toHaveBeenCalled();
+    await service.dispose();
+    expect(imagePort.deleteImage).not.toHaveBeenCalled();
+  });
+
+  test('keeps pending image edits behind the promoted durable insertion', async () => {
+    const upload = deferred<Readonly<{ url: string }>>();
+    const imagePort = {
+      uploadImage: vi.fn(async () => upload.promise),
+      cloneImage: vi.fn(async ({ url }: { url: string }) => ({ url })),
+      deleteImage: vi.fn(async () => ({ ok: true as const })),
+    };
+    const executed: TCanvasCommand[] = [];
+    let acceptedImage: TImageNode | null = null;
+    const queue = eventQueue();
+    const transport: TCanvasDocumentTransport = {
+      getSnapshot: vi.fn(async () => snapshot([])),
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
+      execute: vi.fn(async (command) => {
+        executed.push(command);
+        const insertion = command.operations.find(
+          (operation) => operation.type === 'insert',
+        );
+        if (insertion?.type === 'insert') {
+          acceptedImage = insertion.item as TImageNode;
+        } else {
+          acceptedImage = {
+            ...acceptedImage!,
+            transform: {
+              ...acceptedImage!.transform,
+              position: { x: 25, y: 0 },
+            },
+          };
+        }
+        return event(
+          command.commandId,
+          executed.length,
+          [item(acceptedImage!, executed.length + 1)],
+        );
+      }),
+      subscribe: vi.fn(() => queue.iterable),
+    };
+    const fake = fakeEngine();
+    fake.seedResource('resource-a');
+    let idSequence = 0;
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport,
+      createCommandId: () => `command-${++idSequence}`,
+      image: imagePort,
+    });
+    await service.start(fake.engine);
+    const node: TImageNode = {
+      id: 'image-a',
+      kind: 'image',
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
+      orderKey: 'A',
+      transform,
+      resourceId: 'resource-a',
+      size: { width: 80, height: 60 },
+    };
+    service.commitPrepared({
+      importId: 'import-a',
+      source: 'clipboard',
+      mutation: mutation(
+        fake.engine,
+        'image-transaction-a',
+        [{ type: 'upsert', node }],
+        [node.id],
+      ),
+      images: [{
+        node,
+        blob: new Blob(['image'], { type: 'image/png' }),
+        mimeType: 'image/png',
+        intrinsicSize: { width: 80, height: 60 },
+      }],
+    });
+    const moved: TImageNode = {
+      ...node,
+      transform: {
+        ...node.transform,
+        position: { x: 25, y: 0 },
+      },
+    };
+    service.commit(mutation(
+      fake.engine,
+      'image-move-a',
+      [{ type: 'upsert', node: moved }],
+      [node.id],
+    ));
+    expect(service.node(node.id)?.transform.position.x).toBe(25);
+    expect(transport.execute).not.toHaveBeenCalled();
+
+    upload.resolve({ url: 'https://media.test/image-a.png' });
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(2));
+
+    expect(executed[0]?.operations).toEqual([
+      expect.objectContaining({
+        type: 'insert',
+        item: expect.objectContaining({
+          transform: expect.objectContaining({
+            position: { x: 0, y: 0 },
+          }),
+          extensions: {
+            [CANVAS_IMAGE_EXTENSION_KEY]: {
+              schemaVersion: 1,
+              url: 'https://media.test/image-a.png',
+              mimeType: 'image/png',
+            },
+          },
+        }),
+      }),
+    ]);
+    expect(executed[1]?.operations).toEqual([
+      expect.objectContaining({
+        type: 'patch',
+        patches: expect.arrayContaining([
+          {
+            type: 'set',
+            path: ['transform', 'position', 'x'],
+            value: 25,
+          },
+        ]),
+      }),
+    ]);
+    expect(service.node(node.id)?.transform.position.x).toBe(25);
+    expect(service.pendingTransactionCount).toBe(0);
+
+    await service.dispose();
+  });
+
+  test('promotes a pending image clone sharing its resource and persists descriptors on every insert', async () => {
+    const upload = deferred<Readonly<{ url: string }>>();
+    const imagePort = {
+      uploadImage: vi.fn(async () => upload.promise),
+      cloneImage: vi.fn(async ({ url }: { url: string }) => ({ url })),
+      deleteImage: vi.fn(async () => ({ ok: true as const })),
+    };
+    const executed: TCanvasCommand[] = [];
+    let revision = 0;
+    const transport = transportWith(
+      snapshot([]),
+      async (command) => {
+        executed.push(command);
+        revision += 1;
+        const inserted = command.operations.find(
+          (operation) => operation.type === 'insert',
+        );
+        if (inserted?.type !== 'insert') throw new Error('missing image insert');
+        return event(command.commandId, revision, [
+          item(inserted.item, revision + 1),
+        ]);
+      },
+    );
+    const fake = fakeEngine();
+    fake.seedResource('resource-a');
+    let idSequence = 0;
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => `command-${++idSequence}`,
+      image: imagePort,
+    });
+    await service.start(fake.engine);
+    const original: TImageNode = {
+      id: 'image-a',
+      kind: 'image',
+      parentId: CANVAS_RUNTIME_CONTENT_LAYER_ID,
+      orderKey: 'A',
+      transform,
+      resourceId: 'resource-a',
+      size: { width: 80, height: 60 },
+    };
+    const clone: TImageNode = {
+      ...original,
+      id: 'image-b',
+      orderKey: 'B',
+      transform: {
+        ...transform,
+        position: { x: 100, y: 0 },
+      },
+    };
+
+    service.commitPrepared({
+      importId: 'import-a',
+      source: 'clipboard',
+      mutation: mutation(
+        fake.engine,
+        'image-transaction-a',
+        [{ type: 'upsert', node: original }],
+        [original.id],
+      ),
+      images: [{
+        node: original,
+        blob: new Blob(['image'], { type: 'image/png' }),
+        mimeType: 'image/png',
+        intrinsicSize: { width: 80, height: 60 },
+      }],
+    });
+    service.commit(mutation(
+      fake.engine,
+      'clone-transaction-a',
+      [{ type: 'upsert', node: clone }],
+      [clone.id],
+    ));
+    expect(transport.execute).not.toHaveBeenCalled();
+
+    upload.resolve({ url: 'https://media.test/image-a.png' });
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+
+    expect(executed).toHaveLength(2);
+    for (const command of executed) {
+      const inserted = command.operations.find(
+        (operation) => operation.type === 'insert',
+      );
+      expect(inserted).toMatchObject({
+        type: 'insert',
+        item: {
+          kind: 'image',
+          resourceId: 'resource-a',
+          extensions: {
+            [CANVAS_IMAGE_EXTENSION_KEY]: {
+              schemaVersion: 1,
+              url: 'https://media.test/image-a.png',
+              mimeType: 'image/png',
+            },
+          },
+        },
+      });
+    }
+    expect(service.node(original.id)?.extensions).toMatchObject({
+      [CANVAS_IMAGE_EXTENSION_KEY]: {
+        url: 'https://media.test/image-a.png',
+      },
+    });
+    expect(service.node(clone.id)?.extensions).toMatchObject({
+      [CANVAS_IMAGE_EXTENSION_KEY]: {
+        url: 'https://media.test/image-a.png',
+      },
+    });
+    await service.dispose();
+  });
+
+  test('rejects reuse of a command ID after its acknowledgement is accepted', async () => {
+    const transport = transportWith(
+      snapshot([item(rect())]),
+      async (command) => {
+        const operation = command.operations.find(
+          (entry) => entry.type === 'patch',
+        );
+        const xPatch = operation?.type === 'patch'
+          ? operation.patches.find((patch) => (
+            patch.type === 'set'
+            && patch.path.join('.') === 'transform.position.x'
+          ))
+          : undefined;
+        return event(
+          command.commandId,
+          1,
+          [item(rect('rect-a', Number(xPatch?.value ?? 0)), 2)],
+        );
+      },
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'reused-command',
+    });
+    await service.start(fake.engine);
+
+    service.commit(mutation(
+      fake.engine,
+      'transaction-a',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 25)) }],
+      ['rect-a'],
+    ));
+    await vi.waitFor(() => expect(service.pendingTransactionCount).toBe(0));
+
+    expect(() => service.commit(mutation(
+      fake.engine,
+      'transaction-b',
+      [{ type: 'upsert', node: runtimeNode(rect('rect-a', 50)) }],
+      ['rect-a'],
+    ))).toThrow("Duplicate canvas command ID 'reused-command'.");
+    expect(transport.execute).toHaveBeenCalledTimes(1);
+    expect(service.node('rect-a')?.transform.position.x).toBe(25);
+    await service.dispose();
+  });
+
+  test('registers durable image URL descriptors when loading a snapshot', async () => {
+    const imageNode: TImageNode = {
+      id: 'image-a',
+      kind: 'image',
+      parentId: null,
+      orderKey: 'A',
+      transform,
+      resourceId: 'resource-a',
+      size: { width: 80, height: 60 },
+      extensions: {
+        [CANVAS_IMAGE_EXTENSION_KEY]: {
+          schemaVersion: 1,
+          url: 'https://media.test/image-a.png',
+          mimeType: 'image/png',
+        },
+      },
+    };
+    const transport = transportWith(
+      snapshot([item(imageNode)]),
+      async () => {
+        throw new Error('unexpected execute');
+      },
+    );
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport: transport.transport,
+      createCommandId: () => 'command-a',
+    });
+
+    await service.start(fake.engine);
+
+    expect(fake.replaceRegistrations).toHaveBeenCalledWith([{
+      descriptor: {
+        id: 'resource-a',
+        type: 'image',
+        url: 'https://media.test/image-a.png',
+        mimeType: 'image/png',
+      },
+    }]);
+    expect(fake.preloadRegistrations).toHaveBeenCalledTimes(1);
+    await service.dispose();
+    expect(fake.destroyRegistrations).toHaveBeenCalledTimes(1);
+  });
+
+  test('cancels an injected reconnect wait during disposal', async () => {
+    const delayed = deferred<void>();
+    const cancel = vi.fn(() => delayed.resolve());
+    const wait = {
+      wait: vi.fn(() => ({ promise: delayed.promise, cancel })),
+    };
+    const transport: TCanvasDocumentTransport = {
+      getSnapshot: vi.fn(async () => snapshot([])),
+      query: vi.fn(async () => ({ items: [], nextCursor: null })),
+      execute: vi.fn(async () => event('unexpected', 1, [])),
+      subscribe: () => ({
+        [Symbol.asyncIterator]: () => ({
+          next: async () => ({ done: true, value: undefined }),
+        }),
+      }),
+    };
+    const fake = fakeEngine();
+    const service = new CanvasDocumentService({
+      canvasId: 'canvas-a',
+      transport,
+      createCommandId: () => 'command-a',
+      wait,
+    });
+
+    await service.start(fake.engine);
+    await vi.waitFor(() => expect(wait.wait).toHaveBeenCalledWith(250));
+    await service.dispose();
+
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+});

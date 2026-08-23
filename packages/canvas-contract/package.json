@@ -1,0 +1,64 @@
+{
+  "name": "@omnidraw/canvas-contract",
+  "version": "0.7.0",
+  "description": "Portable Omnidraw canvas document contracts and validation.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omnidraw/omnidraw.git",
+    "directory": "packages/canvas-contract"
+  },
+  "publishConfig": {
+    "@omnidraw:registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./CONSTANTS": {
+      "types": "./dist/CONSTANTS.d.ts",
+      "default": "./dist/CONSTANTS.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
+    },
+    "./validation": {
+      "types": "./dist/validation.d.ts",
+      "default": "./dist/validation.js"
+    },
+    "./codecs": {
+      "types": "./dist/codecs.d.ts",
+      "default": "./dist/codecs.js"
+    },
+    "./conformance": {
+      "types": "./dist/conformance.d.ts",
+      "default": "./dist/conformance.js"
+    }
+  },
+  "scripts": {
+    "build": "bun run scripts/build.ts && bun run ../../scripts/prepare-package-dist.ts",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "prepack": "bun run build",
+    "prepublishOnly": "bun run typecheck && bun run test && bun run build",
+    "test": "bun test --isolate",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "bun-types": "1.4.0",
+    "typescript": "7.0.2"
+  }
+}

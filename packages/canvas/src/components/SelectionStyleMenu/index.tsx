@@ -1,269 +1,391 @@
-import type { TThemeColorPickerPalette } from "@vibecanvas/service-theme";
-import { Show, createMemo, createSignal, type JSX } from "solid-js";
-import { CapPicker } from "./CapPicker";
-import { ColorPalettePanel, ColorPicker } from "./ColorPicker";
-import { FontFamilyPicker } from "./FontFamilyPicker";
-import { FontSizePicker } from "./FontSizePicker";
-import { LineTypePicker } from "./LineTypePicker";
-import { OpacitySlider } from "./OpacitySlider";
-import { StrokeWidthPicker } from "./StrokeWidthPicker";
-import { TextAlignPicker } from "./TextAlignPicker";
-import { VerticalAlignPicker } from "./VerticalAlignPicker";
-import { DEFAULT_STROKE_WIDTHS, type TCapStyle, type TFontFamily, type TLineType, type TStrokeWidthOption } from "./types";
+import type { TColor } from '@omnidraw/cangine';
+import type {
+  TSelectionStyleChange,
+  TSelectionStyleControl,
+  TSelectionStylePropertyId,
+  TSelectionStyleState,
+} from '@omnidraw/cangine/editor';
+import type {
+  TCanvasFillColorCode,
+  TCanvasInkColorCode,
+} from '@omnidraw/canvas-contract';
+import type {
+  TThemeColorPickerPalette,
+  TThemeStrokeWidthOption,
+} from '@omnidraw/theme';
+import {
+  For,
+  Show,
+  createEffect,
+  createSignal,
+  onSettled,
+  untrack,
+} from 'solid-js';
+import {
+  fnCanvasColorToCss,
+  fnSelectionStyleControl,
+  fnSelectionStyleSharedValue,
+} from './fn.selection-style-presentation';
 
-export type TSelectionStyleMenuSections = {
-  showFillPicker: boolean;
-  showStrokeColorPicker: boolean;
-  showStrokeWidthPicker: boolean;
-  showTextPickers: boolean;
-  showOpacityPicker: boolean;
-  showLineTypePicker: boolean;
-  showStartCapPicker: boolean;
-  showEndCapPicker: boolean;
+type TChoice = string | number | readonly string[];
+type TColorSwatch = TThemeColorPickerPalette['fillQuick'][number]
+  | TThemeColorPickerPalette['strokeQuick'][number];
+type TChoicePropertyId = Extract<
+  TSelectionStylePropertyId,
+  'line-routing' | 'stroke-pattern' | 'stroke-width'
+  | 'font-family' | 'font-size' | 'font-weight'
+>;
+type TChoiceSection = Readonly<{
+  id: TChoicePropertyId;
+  label: string;
+  choices?: readonly Readonly<{ label: string; value: TChoice }>[];
+  format?(value: TChoice): string;
+}>;
+
+type TSelectionStyleMenuProps = Readonly<{
+  palette: TThemeColorPickerPalette;
+  state: TSelectionStyleState;
+  strokeWidths: readonly TThemeStrokeWidthOption[];
+  semanticColors?: Readonly<{
+    background: TCanvasFillColorCode | null | undefined;
+    ink: TCanvasInkColorCode | null | undefined;
+  }>;
+  onApply(change: TSelectionStyleChange): boolean;
+  onSetColor(
+    propertyId: 'background' | 'foreground',
+    swatch: TColorSwatch,
+  ): void;
+  onBeginOpacity(): void;
+  onUpdateOpacity(opacity: number): void;
+  onEndOpacity(): void;
+}>;
+
+const LINE_CHOICES = [
+  { label: 'Straight', value: 'straight' },
+  { label: 'Curved', value: 'curved' },
+  { label: 'Elbow', value: 'elbow' },
+] as const;
+const FONT_SIZE_OPTIONS = [
+  { label: 'XS', value: 0.75 }, { label: 'S', value: 0.875 },
+  { label: 'M', value: 1 }, { label: 'L', value: 1.25 },
+  { label: 'XL', value: 1.5 },
+] as const;
+const FONT_WEIGHT_LABELS: Readonly<Record<number, string>> = {
+  400: 'Regular', 500: 'Medium', 600: 'Semibold', 700: 'Bold',
 };
+const CONTAINED_SELECTION_EVENTS = [
+  'pointerdown',
+  'pointermove',
+  'pointerup',
+  'pointercancel',
+  'wheel',
+  'keydown',
+  'keyup',
+] as const;
 
-export type TSelectionStyleMenuValues = {
-  fillColor?: string;
-  strokeColor?: string;
-  strokeWidth?: string;
-  opacity?: number;
-  fontFamily?: TFontFamily;
-  fontSize?: string;
-  textAlign?: "left" | "center" | "right";
-  verticalAlign?: "top" | "middle" | "bottom";
-  lineType?: TLineType;
-  startCap?: TCapStyle;
-  endCap?: TCapStyle;
-};
+function stopSelectionEventPropagation(event: Event): void {
+  event.stopPropagation();
+}
 
-const sectionStyle: JSX.CSSProperties = {
-  display: "flex",
-  "flex-direction": "column",
-  gap: "0.25rem",
-};
+function isOpacityKey(key: string) {
+  return key.startsWith('Arrow') || ['End', 'Home', 'PageDown', 'PageUp'].includes(key);
+}
 
-const labelStyle: JSX.CSSProperties = {
-  "font-size": "10px",
-  color: "var(--muted-foreground)",
-  "font-family": "var(--font-mono)",
-};
+function ChoiceSection(props: Readonly<{
+  section: TChoiceSection;
+  control: TSelectionStyleControl | null;
+  value: TChoice | null;
+  onSelect(value: TChoice): void;
+}>) {
+  const options = () => props.section.choices
+    ?? props.control?.options?.map((value) => ({
+      label: props.section.format?.(value as TChoice) ?? String(value),
+      value: value as TChoice,
+  })) ?? [];
+  const key = (value: TChoice | null) => JSON.stringify(value);
+  return (
+    <Show when={props.control}>
+      <section class="omnidraw-selection-style-section">
+        <span>{props.section.label}</span>
+        <div class="omnidraw-selection-style-choices" data-property={props.section.id}>
+          <For each={options()}>
+            {(option) => (
+              <button
+                type="button"
+                class="omnidraw-selection-style-choice"
+                aria-pressed={key(props.value) === key(option.value)
+                  ? 'true'
+                  : 'false'}
+                disabled={props.section.id === 'font-size' && props.value === null}
+                onClick={() => props.onSelect(option.value)}
+              >
+                {option.label}
+              </button>
+            )}
+          </For>
+        </div>
+      </section>
+    </Show>
+  );
+}
 
-export function SelectionStyleMenu(props: {
-  visible: () => boolean;
-  sections: () => TSelectionStyleMenuSections;
-  values: () => TSelectionStyleMenuValues;
-  strokeWidthOptions?: () => TStrokeWidthOption[];
-  colorPalette: () => TThemeColorPickerPalette;
-  onFillChange: (color: string) => void;
-  onStrokeChange: (color: string) => void;
-  onStrokeWidthChange: (width: string) => void;
-  onOpacityChange: (opacity: number) => void;
-  onFontFamilyChange: (fontFamily: TFontFamily) => void;
-  onFontSizeChange?: (fontSize: string) => void;
-  onTextAlignChange?: (textAlign: "left" | "center" | "right") => void;
-  onVerticalAlignChange?: (verticalAlign: "top" | "middle" | "bottom") => void;
-  onLineTypeChange: (lineType: TLineType) => void;
-  onStartCapChange: (capStyle: TCapStyle) => void;
-  onEndCapChange: (capStyle: TCapStyle) => void;
-  rootRef?: (element: HTMLDivElement) => void;
-  onEscape?: () => void;
-  onInteraction?: () => void;
-}) {
-  const shouldShow = createMemo(() => props.visible());
-  const resolvedStrokeWidthOptions = createMemo(() => {
-    const options = props.strokeWidthOptions?.() ?? [];
-    return options.length > 0 ? options : [...DEFAULT_STROKE_WIDTHS];
+function ColorSection(props: Readonly<{
+  label: string;
+  value: string | null;
+  semanticCode?: TCanvasFillColorCode | TCanvasInkColorCode | null;
+  swatches: readonly TColorSwatch[];
+  onSelect(swatch: TColorSwatch): void;
+}>) {
+  return (
+    <section class="omnidraw-selection-style-section">
+      <span>{props.label}</span>
+      <div class="omnidraw-selection-style-colors">
+        <For each={props.swatches}>
+          {(swatch) => (
+            <button
+              type="button"
+              class="omnidraw-style-color"
+              aria-label={`${props.label} ${swatch.label}`}
+              aria-pressed={props.semanticCode === undefined
+                ? props.value === swatch.color ? 'true' : 'false'
+                : props.semanticCode === swatch.code ? 'true' : 'false'}
+              title={swatch.label}
+              style={{ '--omnidraw-style-color': swatch.color }}
+              onClick={() => props.onSelect(swatch)}
+            />
+          )}
+        </For>
+      </div>
+    </section>
+  );
+}
+
+function selectedColor(control: TSelectionStyleControl): string | null {
+  const color = fnSelectionStyleSharedValue<TColor | null>(control);
+  return color === null ? null : fnCanvasColorToCss(color);
+}
+
+function OpacitySection(props: Readonly<{
+  control: TSelectionStyleControl;
+  preview: number | null;
+  value: number;
+  onBegin(): void;
+  onEnd(): void;
+  onUpdate(value: number): void;
+}>) {
+  let inputRef!: HTMLInputElement;
+  const begin = () => props.onBegin();
+  const end = () => props.onEnd();
+  const update = () => props.onUpdate(inputRef.valueAsNumber);
+  const beginFromKey = (event: KeyboardEvent) => {
+    if (isOpacityKey(event.key)) props.onBegin();
+  };
+  const endFromKey = (event: KeyboardEvent) => {
+    if (isOpacityKey(event.key)) props.onEnd();
+  };
+  onSettled(() => {
+    inputRef.addEventListener('pointerdown', begin);
+    inputRef.addEventListener('pointerup', end);
+    inputRef.addEventListener('pointercancel', end);
+    inputRef.addEventListener('input', update);
+    inputRef.addEventListener('change', end);
+    inputRef.addEventListener('blur', end);
+    inputRef.addEventListener('keydown', beginFromKey);
+    inputRef.addEventListener('keyup', endFromKey);
+    return () => {
+      inputRef.removeEventListener('pointerdown', begin);
+      inputRef.removeEventListener('pointerup', end);
+      inputRef.removeEventListener('pointercancel', end);
+      inputRef.removeEventListener('input', update);
+      inputRef.removeEventListener('change', end);
+      inputRef.removeEventListener('blur', end);
+      inputRef.removeEventListener('keydown', beginFromKey);
+      inputRef.removeEventListener('keyup', endFromKey);
+    };
   });
-  const [expandedColorPanel, setExpandedColorPanel] = createSignal<"fill" | "stroke" | null>(null);
 
   return (
-    <Show when={shouldShow()}>
-      <div
-        style={{
-          position: "absolute",
-          left: "0.75rem",
-          top: "0.75rem",
-          "z-index": 40,
-          "pointer-events": "none",
-        }}
-      >
-        <div
-          ref={props.rootRef}
-          tabIndex={0}
-          style={{ display: "flex", gap: "0.5rem", "align-items": "flex-start", outline: "none" }}
-          onPointerDown={() => props.onInteraction?.()}
-          onKeyDown={(event) => {
-            if (event.key !== "Escape") {
-              return;
+    <section class="omnidraw-selection-style-section">
+      <label for="omnidraw-selection-opacity">
+        <span>OPACITY</span>
+        <output>
+          {fnSelectionStyleSharedValue<number>(props.control) === null
+            && props.preview === null
+            ? 'Mixed'
+            : `${Math.round(props.value * 100)}%`}
+        </output>
+      </label>
+      <input
+        ref={inputRef}
+        id="omnidraw-selection-opacity"
+        type="range"
+        min="0"
+        max="1"
+        step="0.01"
+        value={props.value}
+        style={{ '--omnidraw-style-opacity': `${props.value * 100}%` }}
+      />
+    </section>
+  );
+}
+
+export function SelectionStyleMenu(props: TSelectionStyleMenuProps) {
+  let menuRef!: HTMLElement;
+  let opacityContinuous = false;
+  let fontSizeSelection = '';
+  let fontSizeBase: number | null = null;
+  const [fontSizeFactor, setFontSizeFactor] = createSignal(1);
+  const [opacityPreview, setOpacityPreview] = createSignal<number | null>(null);
+  const control = (id: Parameters<typeof fnSelectionStyleControl>[1]) =>
+    fnSelectionStyleControl(props.state, id);
+  const choiceSections = () => [
+    { id: 'line-routing', label: 'LINE', choices: LINE_CHOICES },
+    {
+      id: 'stroke-pattern',
+      label: 'STROKE',
+      format: (value) => String(value).replace(/^\w/, (letter) =>
+        letter.toUpperCase()),
+    },
+    { id: 'stroke-width', label: 'WIDTH', choices: props.strokeWidths },
+    {
+      id: 'font-family', label: 'FONT',
+      format: (value) => (value as readonly string[])[0] ?? 'Font',
+    },
+    { id: 'font-size', label: 'SIZE', choices: FONT_SIZE_OPTIONS },
+    {
+      id: 'font-weight', label: 'WEIGHT',
+      format: (value) => FONT_WEIGHT_LABELS[Number(value)] ?? String(value),
+    },
+  ] satisfies readonly TChoiceSection[];
+  const applyChoice = (section: TChoiceSection, value: TChoice) => {
+    if (section.id !== 'font-size') {
+      props.onApply({ propertyId: section.id, value } as TSelectionStyleChange);
+      return;
+    }
+    if (fontSizeBase === null || typeof value !== 'number') return;
+    const previousFactor = fontSizeFactor();
+    setFontSizeFactor(value);
+    if (!props.onApply({
+      propertyId: 'font-size',
+      value: fontSizeBase * value,
+    })) {
+      setFontSizeFactor(previousFactor);
+    }
+  };
+  const beginOpacity = () => {
+    if (opacityContinuous) return;
+    props.onBeginOpacity();
+    opacityContinuous = true;
+  };
+  const endOpacity = () => {
+    if (!opacityContinuous) return;
+    opacityContinuous = false;
+    props.onEndOpacity();
+    setOpacityPreview(null);
+  };
+  const updateOpacity = (value: number) => {
+    if (!opacityContinuous) {
+      props.onApply({ propertyId: 'opacity', value });
+      return;
+    }
+    setOpacityPreview(value);
+    props.onUpdateOpacity(value);
+  };
+  const opacityValue = () => opacityPreview()
+    ?? fnSelectionStyleSharedValue<number>(control('opacity'))
+    ?? 0.5;
+  createEffect(
+    () => {
+      const current = fnSelectionStyleSharedValue<number>(control('font-size'));
+      const selection = props.state.selectedRootIds.join('\0');
+      const factor = untrack(fontSizeFactor);
+      const selectionChanged = selection !== fontSizeSelection;
+      return {
+        current,
+        selection,
+        selectionChanged,
+        shouldReset: selectionChanged || current !== (
+          fontSizeBase === null ? null : fontSizeBase * factor
+        ),
+      } as const;
+    },
+    (intent) => {
+      if (intent.selectionChanged) endOpacity();
+      if (!intent.shouldReset) return;
+      fontSizeSelection = intent.selection;
+      fontSizeBase = intent.current;
+      setFontSizeFactor(1);
+    },
+  );
+  onSettled(() => {
+    for (const type of CONTAINED_SELECTION_EVENTS) {
+      menuRef.addEventListener(type, stopSelectionEventPropagation);
+    }
+    return () => {
+      for (const type of CONTAINED_SELECTION_EVENTS) {
+        menuRef.removeEventListener(type, stopSelectionEventPropagation);
+      }
+      endOpacity();
+    };
+  });
+
+  return (
+    <aside
+      ref={menuRef}
+      class="omnidraw-selection-style-menu"
+      aria-label="Selection styles"
+    >
+      <For each={choiceSections()}>
+        {(section) => (
+          <ChoiceSection
+            section={section}
+            control={control(section.id)}
+            value={section.id === 'font-size'
+              ? fnSelectionStyleSharedValue(control(section.id)) === null ? null : fontSizeFactor()
+              : fnSelectionStyleSharedValue(control(section.id))}
+            onSelect={(value) => applyChoice(section, value)}
+          />
+        )}
+      </For>
+      <Show when={control('background')}>
+        {(entry) => (
+          <ColorSection
+            label="BACKGROUND"
+            value={selectedColor(entry())}
+            semanticCode={props.semanticColors?.background}
+            swatches={props.palette.fillQuick}
+            onSelect={(swatch) => props.onSetColor('background', swatch)}
+          />
+        )}
+      </Show>
+      <Show when={control('foreground')}>
+        {(entry) => (
+          <ColorSection
+            label={
+              control('background')?.coverage.candidateTargetCount
+                === entry().coverage.candidateTargetCount
+                ? 'BORDER COLOR'
+                : 'COLOR'
             }
-
-            event.preventDefault();
-            event.stopPropagation();
-            props.onEscape?.();
-          }}
-        >
-          <div
-            style={{
-              width: "18.5rem",
-              height: "24rem",
-              border: "1px solid var(--border)",
-              background: "var(--card)",
-              "box-shadow": "0 6px 18px rgba(0, 0, 0, 0.12)",
-              "pointer-events": "auto",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                height: "100%",
-                padding: "0.75rem",
-                display: "flex",
-                "flex-direction": "column",
-                gap: "0.75rem",
-                overflow: "auto",
-              }}
-            >
-            <Show when={props.sections().showFillPicker}>
-              <div style={sectionStyle}>
-                <span style={labelStyle}>FILL</span>
-                <ColorPicker
-                  value={props.values().fillColor}
-                  onChange={props.onFillChange}
-                  showTransparent
-                  mode="fill"
-                  palette={props.colorPalette()}
-                  expanded={expandedColorPanel() === "fill"}
-                  onExpandedChange={(expanded) => setExpandedColorPanel(expanded ? "fill" : null)}
-                />
-              </div>
-            </Show>
-
-            <Show when={props.sections().showStrokeColorPicker}>
-              <div style={sectionStyle}>
-                <span style={labelStyle}>COLOR</span>
-                <ColorPicker
-                  value={props.values().strokeColor}
-                  onChange={props.onStrokeChange}
-                  mode="stroke"
-                  palette={props.colorPalette()}
-                  expanded={expandedColorPanel() === "stroke"}
-                  onExpandedChange={(expanded) => setExpandedColorPanel(expanded ? "stroke" : null)}
-                />
-              </div>
-            </Show>
-
-            <Show when={props.sections().showStrokeWidthPicker}>
-              <div style={sectionStyle}>
-                <span style={labelStyle}>WIDTH</span>
-                <StrokeWidthPicker
-                  options={resolvedStrokeWidthOptions()}
-                  value={props.values().strokeWidth}
-                  onChange={props.onStrokeWidthChange}
-                />
-              </div>
-            </Show>
-
-            <Show when={props.sections().showTextPickers}>
-              <div style={{ display: "flex", "flex-direction": "column", gap: "0.75rem" }}>
-                <div style={sectionStyle}>
-                  <span style={labelStyle}>FONT</span>
-                  <FontFamilyPicker
-                    value={props.values().fontFamily}
-                    onChange={props.onFontFamilyChange}
-                  />
-                </div>
-
-                <div style={sectionStyle}>
-                  <span style={labelStyle}>SIZE</span>
-                  <FontSizePicker
-                    value={props.values().fontSize}
-                    onChange={(fontSize) => props.onFontSizeChange?.(fontSize)}
-                  />
-                </div>
-
-                <div style={sectionStyle}>
-                  <span style={labelStyle}>ALIGN</span>
-                  <TextAlignPicker
-                    value={props.values().textAlign}
-                    onChange={(textAlign) => props.onTextAlignChange?.(textAlign)}
-                  />
-                </div>
-
-                <div style={sectionStyle}>
-                  <span style={labelStyle}>VERTICAL</span>
-                  <VerticalAlignPicker
-                    value={props.values().verticalAlign}
-                    onChange={(verticalAlign) => props.onVerticalAlignChange?.(verticalAlign)}
-                  />
-                </div>
-              </div>
-            </Show>
-
-            <Show when={props.sections().showLineTypePicker}>
-              <div style={sectionStyle}>
-                <span style={labelStyle}>CURVE</span>
-                <LineTypePicker
-                  value={props.values().lineType}
-                  onChange={props.onLineTypeChange}
-                />
-              </div>
-            </Show>
-
-            <Show when={props.sections().showStartCapPicker}>
-              <div style={sectionStyle}>
-                <span style={labelStyle}>START</span>
-                <CapPicker
-                  label="START"
-                  value={props.values().startCap}
-                  onChange={props.onStartCapChange}
-                />
-              </div>
-            </Show>
-
-            <Show when={props.sections().showEndCapPicker}>
-              <div style={sectionStyle}>
-                <span style={labelStyle}>END</span>
-                <CapPicker
-                  label="END"
-                  value={props.values().endCap}
-                  onChange={props.onEndCapChange}
-                />
-              </div>
-            </Show>
-
-            <Show when={props.sections().showOpacityPicker}>
-              <div style={sectionStyle}>
-                <span style={labelStyle}>OPACITY</span>
-                <OpacitySlider
-                  value={props.values().opacity}
-                  onChange={props.onOpacityChange}
-                />
-              </div>
-            </Show>
-            </div>
-          </div>
-
-          <Show when={expandedColorPanel() === "fill" && props.sections().showFillPicker}>
-            <div style={{ "pointer-events": "auto" }}>
-              <ColorPalettePanel
-                value={props.values().fillColor}
-                onChange={props.onFillChange}
-                palette={props.colorPalette()}
-              />
-            </div>
-          </Show>
-
-          <Show when={expandedColorPanel() === "stroke" && props.sections().showStrokeColorPicker}>
-            <div style={{ "pointer-events": "auto" }}>
-              <ColorPalettePanel
-                value={props.values().strokeColor}
-                onChange={props.onStrokeChange}
-                palette={props.colorPalette()}
-              />
-            </div>
-          </Show>
-        </div>
-      </div>
-    </Show>
+            value={selectedColor(entry())}
+            semanticCode={props.semanticColors?.ink}
+            swatches={props.palette.strokeQuick}
+            onSelect={(swatch) => props.onSetColor('foreground', swatch)}
+          />
+        )}
+      </Show>
+      <Show when={control('opacity')}>
+        {(entry) => (
+          <OpacitySection
+            control={entry()}
+            preview={opacityPreview()}
+            value={opacityValue()}
+            onBegin={beginOpacity}
+            onEnd={endOpacity}
+            onUpdate={updateOpacity}
+          />
+        )}
+      </Show>
+    </aside>
   );
 }

@@ -9,10 +9,9 @@ import os from "os"
 import path from "path"
 
 const rootDir = path.resolve(import.meta.dir, "..")
-const cliDir = path.join(rootDir, "apps/cli")
-const frontendDir = path.join(rootDir, "apps/frontend")
-const webDir = path.join(rootDir, "apps/web")
-const lockRootDir = path.join(os.tmpdir(), "vibecanvas-dev-ports")
+const backendDir = path.join(rootDir, "apps/backend")
+const frontendDevScript = path.join(rootDir, "scripts/dev-frontend.ts")
+const lockRootDir = path.join(os.tmpdir(), "omnidraw-dev-ports")
 const bunExec = process.execPath
 
 type TPortLease = {
@@ -23,6 +22,10 @@ type TPortLease = {
 type TDevProcess = {
   name: string
   process: ReturnType<typeof Bun.spawn>
+}
+
+function readableProcessStream(value: unknown): ReadableStream<Uint8Array> | null {
+  return value instanceof ReadableStream ? value as ReadableStream<Uint8Array> : null
 }
 
 function parsePortEnv(name: string, fallback: number): number {
@@ -194,7 +197,7 @@ async function waitForBackendPort(child: TDevProcess): Promise<number> {
 
   const portPromise = new Promise<number>((resolve, reject) => {
     const readLine = (line: string) => {
-      const match = line.match(/Server listening on http:\/\/localhost:(\d+)/)
+      const match = line.match(/Listening on http:\/\/(?:127\.0\.0\.1|localhost):(\d+)/)
       if (!match) return
 
       resolved = true
@@ -203,21 +206,21 @@ async function waitForBackendPort(child: TDevProcess): Promise<number> {
 
     void pipeLines({
       child,
-      stream: child.process.stdout,
+      stream: readableProcessStream(child.process.stdout),
       sink: readLine,
       write: (text) => process.stdout.write(text),
     })
 
     void pipeLines({
       child,
-      stream: child.process.stderr,
+      stream: readableProcessStream(child.process.stderr),
       sink: readLine,
       write: (text) => process.stderr.write(text),
     })
 
     child.process.exited.then((exitCode) => {
       if (resolved) return
-      reject(new Error(`[dev] cli exited before the backend became ready with code ${exitCode}`))
+      reject(new Error(`[dev] backend exited before it became ready with code ${exitCode}`))
     })
   })
 
@@ -226,6 +229,36 @@ async function waitForBackendPort(child: TDevProcess): Promise<number> {
     Bun.sleep(30_000).then(() => {
       throw new Error("[dev] Timed out waiting for backend startup")
     }),
+  ])
+}
+
+async function waitForFrontendReady(child: TDevProcess, port: number): Promise<void> {
+  let resolved = false
+  const readiness = new Promise<void>((resolve, reject) => {
+    const readLine = (line: string): void => {
+      if (!line.includes("Local:") || !line.includes(`:${port}/`)) return
+      resolved = true
+      resolve()
+    }
+    void pipeLines({
+      child,
+      stream: readableProcessStream(child.process.stdout),
+      sink: readLine,
+      write: (text) => process.stdout.write(text),
+    })
+    void pipeLines({
+      child,
+      stream: readableProcessStream(child.process.stderr),
+      sink: readLine,
+      write: (text) => process.stderr.write(text),
+    })
+    void child.process.exited.then((exitCode) => {
+      if (!resolved) reject(new Error(`[dev] frontend stack exited before it became ready with code ${exitCode}`))
+    })
+  })
+  await Promise.race([
+    readiness,
+    Bun.sleep(90_000).then(() => { throw new Error("[dev] Timed out waiting for frontend startup") }),
   ])
 }
 
@@ -248,8 +281,8 @@ async function stopProcesses(processes: TDevProcess[], exitCode: number): Promis
   process.exit(exitCode)
 }
 
-const backendPort = parsePortEnv("VIBECANVAS_BACKEND_PORT", 3000)
-const frontendPort = parsePortEnv("VIBECANVAS_FRONTEND_PORT", 3002)
+const backendPort = parsePortEnv("OMNIDRAW_BACKEND_PORT", 3000)
+const frontendPort = parsePortEnv("OMNIDRAW_FRONTEND_PORT", 3002)
 const leases: TPortLease[] = []
 const processes: TDevProcess[] = []
 let stopping = false
@@ -281,46 +314,41 @@ try {
   const backendLease = await acquirePortLease("backend", backendPort)
   leases.push(backendLease)
 
-  const cliProcess = spawnDevProcess({
-    name: "cli",
-    cwd: cliDir,
+  const backendProcess = spawnDevProcess({
+    name: "backend",
+    cwd: backendDir,
     cmd: [bunExec, "run", "--watch", "./src/main.ts", "serve", "--port", String(backendLease.port)],
     env: {
       NODE_ENV: "development",
-      VIBECANVAS_CHANNEL: "dev",
-      VIBECANVAS_COMPILED: "false",
-      VIBECANVAS_VERSION: "0.0.0",
+      OMNIDRAW_HOME: process.env.OMNIDRAW_HOME ?? path.join(rootDir, ".omnidraw"),
     },
     output: "pipe",
   })
-  processes.push(cliProcess)
+  processes.push(backendProcess)
 
-  const actualBackendPort = await waitForBackendPort(cliProcess)
+  const actualBackendPort = await waitForBackendPort(backendProcess)
   const frontendLease = await acquirePortLease("frontend", frontendPort)
   leases.push(frontendLease)
 
   const backendTarget = `http://127.0.0.1:${actualBackendPort}`
 
-  console.log(`[dev] Backend: ${backendTarget}`)
-  console.log(`[dev] Frontend: http://127.0.0.1:${frontendLease.port}`)
-  console.log(`[dev] Frontend proxy target: ${backendTarget}`)
-
-  processes.push(spawnDevProcess({
-    name: "frontend",
-    cwd: frontendDir,
-    cmd: [bunExec, "run", "dev", "--", "--host", "127.0.0.1", "--port", String(frontendLease.port), "--strictPort"],
+  const frontendStack = spawnDevProcess({
+    name: "frontend-stack",
+    cwd: rootDir,
+    cmd: [bunExec, frontendDevScript, "--host", "127.0.0.1", "--port", String(frontendLease.port), "--strictPort"],
     env: {
-      VIBECANVAS_BACKEND_HOST: "127.0.0.1",
-      VIBECANVAS_BACKEND_PORT: String(actualBackendPort),
-      VIBECANVAS_FRONTEND_PORT: String(frontendLease.port),
+      OMNIDRAW_BACKEND_HOST: "127.0.0.1",
+      OMNIDRAW_BACKEND_PORT: String(actualBackendPort),
+      OMNIDRAW_FRONTEND_PORT: String(frontendLease.port),
     },
-  }))
+    output: "pipe",
+  })
+  processes.push(frontendStack)
+  await waitForFrontendReady(frontendStack, frontendLease.port)
 
-  processes.push(spawnDevProcess({
-    name: "web",
-    cwd: webDir,
-    cmd: [bunExec, "run", "dev"],
-  }))
+  console.log(`[dev] Ready — Backend: ${backendTarget}`)
+  console.log(`[dev] Ready — Frontend: http://127.0.0.1:${frontendLease.port}`)
+  console.log(`[dev] Frontend proxy target: ${backendTarget}`)
 
   for (const child of processes) {
     child.process.exited.then((exitCode) => {

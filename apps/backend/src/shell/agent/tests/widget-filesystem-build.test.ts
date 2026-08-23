@@ -1,0 +1,638 @@
+import { describe, expect, test } from 'bun:test';
+import type {
+  TWidgetArtifactConstructionRequest,
+  TWidgetArtifactConstructionResult,
+  TWidgetBuildEnvironment,
+  TWidgetBuildResult,
+  TWidgetManifestV1,
+} from '@omnidraw/sdk/contract';
+import { WidgetArtifactBuilderCapsule } from '#backend/shell/widget-runtime/build';
+import { WidgetSourceSnapshot } from '#backend/shell/widget-domain/local';
+import { WidgetFilesystemBuildService } from '../widget-filesystem/build';
+import {
+  fnDecodeWidgetFilesystemConstruction,
+  fnEncodeWidgetFilesystemConstruction,
+} from '../widget-filesystem/build';
+
+const RAW_A = 'a'.repeat(64);
+const RAW_B = 'b'.repeat(64);
+const CAPSULE_HASH = `sha256:${RAW_A}` as const;
+const CAPSULE_BUILD_IDENTITY = Object.freeze({
+  packageName: '@omnidraw/capsule' as const,
+  packageVersion: '0.10.2',
+  packageDigest: CAPSULE_HASH,
+  buildApiVersion: '0.1.0',
+  runtimeBuildDigest: `sha256:${RAW_B}` as const,
+});
+const RUNTIME = Object.freeze({
+  format: 'omnidraw.capsule-runtime.v2' as const,
+  artifactHash: CAPSULE_HASH,
+  apiContract: Object.freeze({
+    format: 'capsule-api-groups-v1' as const,
+    groups: Object.freeze(['DOM'] as const),
+    bundleDigest: `sha256:${RAW_B}` as const,
+  }),
+  budgets: Object.freeze({}),
+  capabilityRequests: Object.freeze([]),
+  channels: null,
+  parkability: Object.freeze({ parkable: false as const }),
+  signatureKeyIds: Object.freeze(['release-key']),
+});
+const MANIFEST: TWidgetManifestV1 = Object.freeze({
+  $schema: 'https://omnidraw.dev/schemas/widget/v1.json',
+  schemaVersion: 1,
+  name: 'Counter',
+  slug: 'counter',
+  description: 'A small counter.',
+  tool: Object.freeze({ label: 'Counter', group: 'examples', priority: 0 }),
+  ui: Object.freeze({
+    runtime: 'capsule',
+    entry: 'src/main.ts',
+    apis: Object.freeze(['DOM'] as const),
+  }),
+});
+const ENVIRONMENT: TWidgetBuildEnvironment = Object.freeze({
+  packageManager: Object.freeze({
+    name: 'npm',
+    version: '11.0.0',
+    lockfile: 'package-lock.json',
+    lockFormat: 'npm-lock-v3',
+  }),
+  sdkVersion: '0.6.0',
+  importMapDigestSha256: RAW_A,
+  transformsDigestSha256: RAW_B,
+  runner: Object.freeze({ kind: 'isolated', identity: 'docker@example' }),
+  platform: Object.freeze({ os: 'linux', architecture: 'arm64' }),
+  capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
+  buildPolicyId: 'omnidraw-capsule-v1',
+  signingPolicyId: 'filesystem-signing-v1',
+});
+
+function fixture() {
+  let captured: TWidgetArtifactConstructionRequest | null = null;
+  const unsignedBytes = new TextEncoder().encode('unsigned');
+  const signedBytes = new TextEncoder().encode('signed');
+  const construction = {
+    sourceSnapshotId: RAW_A,
+    sourceDigestSha256: RAW_A,
+    sourceArtifact: { kind: 'source', digestSha256: RAW_A, bytes: new Uint8Array() },
+    sourceMapArtifact: null,
+    builderIdentity: 'builder-v1',
+    capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
+    buildPolicyId: 'omnidraw-capsule-v1',
+    canonicalManifestJson: '{}',
+    distributionProvenance: {
+      kind: 'external-distribution',
+      producer: { name: 'test', version: '1', digest: `sha256:${RAW_A}` },
+      sourceRevision: RAW_A,
+      dependencyLockDigest: `sha256:${RAW_A}`,
+      buildConfigurationDigest: `sha256:${RAW_B}`,
+    },
+    distributionFiles: [{ path: 'main.js', bytes: new TextEncoder().encode('browser') }],
+    functionDescriptors: [],
+    functionDescriptorsDigestSha256: RAW_A,
+    capabilityContractDigestSha256: RAW_A,
+    channelContractDigestSha256: RAW_A,
+    constructionContractDigestSha256: RAW_A,
+    uiArtifact: {
+      kind: 'unsigned-ui',
+      digestSha256: RAW_A,
+      unsignedBytes,
+      artifactHash: CAPSULE_HASH,
+      runtimeDescriptor: { ...RUNTIME, signatureKeyIds: [] },
+      builderIdentity: 'builder-v1',
+      capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
+    },
+    serverArtifact: null,
+    diagnostics: [],
+  } as unknown as TWidgetArtifactConstructionResult;
+  const build = {
+    ...construction,
+    contractDigestSha256: RAW_B,
+    uiArtifact: {
+      kind: 'ui',
+      digestSha256: RAW_B,
+      bytes: signedBytes,
+      artifactHash: CAPSULE_HASH,
+      runtimeDescriptor: RUNTIME,
+      builderIdentity: 'builder-v1',
+      capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
+    },
+  } as unknown as TWidgetBuildResult;
+  const service = new WidgetFilesystemBuildService({
+    builderIdentity: 'builder-v1',
+    environment: ENVIRONMENT,
+    construction: {
+      async construct(request) {
+        captured = request;
+        return construction;
+      },
+      async signConstruction() {
+        return build;
+      },
+    },
+    capsuleInspector: {
+      async inspect(bytes) {
+        expect(bytes).toEqual(signedBytes);
+        return { artifactHash: CAPSULE_HASH, runtime: RUNTIME };
+      },
+    },
+    releaseAttestor: {
+      async attest() {
+        return {
+          algorithm: 'Ed25519',
+          keyId: 'release-key',
+          signatureBase64: Buffer.alloc(64, 1).toString('base64'),
+        };
+      },
+    },
+  });
+  return { service, captured: () => captured };
+}
+
+describe('filesystem widget build service', () => {
+  test('stages only executable source plus the runtime projection', async () => {
+    const harness = fixture();
+    const construction = await harness.service.construct({
+      manifest: MANIFEST,
+      files: [
+        { path: 'src/main.ts', bytes: new TextEncoder().encode('export default 1;') },
+        { path: 'package.json', bytes: new TextEncoder().encode('{}') },
+      ],
+    });
+    const captured = harness.captured()!;
+    expect(captured.snapshot.files.map((file) => file.path)).toEqual([
+      '.omnidraw/build-manifest.json',
+      'package.json',
+      'src/main.ts',
+    ]);
+    const staged = new TextDecoder().decode(captured.snapshot.files[0]!.bytes);
+    expect(staged).not.toContain('Counter');
+    expect(staged).not.toContain('examples');
+    expect(construction.distFiles.map((file) => file.path)).toEqual(['dist/main.js']);
+  });
+
+  test('returns an exact portable receipt with the private construction bytes', async () => {
+    const harness = fixture();
+    const portable = await harness.service.buildPortable({
+      manifest: MANIFEST,
+      files: [
+        { path: 'package-lock.json', bytes: new TextEncoder().encode('{"lockfileVersion":3}') },
+        { path: 'package.json', bytes: new TextEncoder().encode('{}') },
+        { path: 'src/main.ts', bytes: new TextEncoder().encode('export default 1;') },
+      ],
+      workspaceKey: 'generation_counter',
+    });
+
+    expect(portable.receipt.sdkVersion).toBe(ENVIRONMENT.sdkVersion);
+    expect(portable.receipt.outputs).toEqual([{
+      path: 'dist/main.js',
+      byteSize: 7,
+      sha256: 'd4c3e8a11256ab82a4fc72560eb4a2b0e87bad820c290dd9b03616de240aa6db',
+    }]);
+    expect(portable.receipt.buildIdentity).toMatch(/^[0-9a-f]{64}$/);
+    expect(portable.distFiles[0]?.bytes).toEqual(new TextEncoder().encode('browser'));
+  });
+
+  test('serializes and restores a construction with exact bytes', () => {
+    const encoded = fnEncodeWidgetFilesystemConstruction({
+      executableInputDigestSha256: RAW_A,
+      executableManifestDigestSha256: RAW_B,
+      canonicalExecutableManifestJson: '{}',
+      distributionDigestSha256: RAW_A,
+      construction: {
+        sourceSnapshotId: RAW_A,
+        sourceDigestSha256: RAW_A,
+        sourceArtifact: { kind: 'source', digestSha256: RAW_A, bytes: new Uint8Array([1, 2, 3]) },
+        sourceMapArtifact: null,
+        builderIdentity: 'builder-v1',
+        capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
+        buildPolicyId: 'omnidraw-capsule-v1',
+        canonicalManifestJson: '{}',
+        distributionProvenance: {
+          kind: 'external-distribution',
+          producer: { name: 'test', version: '1', digest: `sha256:${RAW_A}` },
+          sourceRevision: RAW_A,
+          dependencyLockDigest: `sha256:${RAW_A}`,
+          buildConfigurationDigest: `sha256:${RAW_B}`,
+        },
+        distributionFiles: [{ path: 'main.js', bytes: new TextEncoder().encode('browser') }],
+        functionDescriptors: [],
+        functionDescriptorsDigestSha256: RAW_A,
+        capabilityContractDigestSha256: RAW_A,
+        channelContractDigestSha256: RAW_A,
+        constructionContractDigestSha256: RAW_A,
+        uiArtifact: {
+          kind: 'unsigned-ui',
+          digestSha256: RAW_A,
+          unsignedBytes: new Uint8Array([9, 8, 7]),
+          artifactHash: CAPSULE_HASH,
+          runtimeDescriptor: { ...RUNTIME, signatureKeyIds: [] },
+          builderIdentity: 'builder-v1',
+          capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
+        },
+        serverArtifact: null,
+        diagnostics: [],
+      } as unknown as import('@omnidraw/sdk/contract').TWidgetArtifactConstructionResult,
+      distFiles: [{ path: 'dist/main.js', bytes: new TextEncoder().encode('browser') }],
+    });
+    const decoded = fnDecodeWidgetFilesystemConstruction(encoded);
+    expect(decoded.executableInputDigestSha256).toBe(RAW_A);
+    expect(decoded.executableManifestDigestSha256).toBe(RAW_B);
+    expect(decoded.construction.sourceArtifact.bytes).toEqual(new Uint8Array([1, 2, 3]));
+    expect(decoded.construction.uiArtifact.unsignedBytes).toEqual(new Uint8Array([9, 8, 7]));
+    expect(decoded.construction.distributionFiles![0]!.bytes)
+      .toEqual(new TextEncoder().encode('browser'));
+    expect(decoded.distFiles[0]!.bytes).toEqual(new TextEncoder().encode('browser'));
+    expect(decoded.construction.capsuleBuildIdentity.packageVersion).toBe('0.10.2');
+  });
+
+  test('reuses a durable construction cache hit without rebuilding', async () => {
+    let constructCalls = 0;
+    const constructionResult = (() => {
+      const unsignedBytes = new TextEncoder().encode('unsigned');
+      return {
+        sourceSnapshotId: RAW_A,
+        sourceDigestSha256: RAW_A,
+        sourceArtifact: { kind: 'source', digestSha256: RAW_A, bytes: new Uint8Array() },
+        sourceMapArtifact: null,
+        builderIdentity: 'builder-v1',
+        capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
+        buildPolicyId: 'omnidraw-capsule-v1',
+        canonicalManifestJson: '{}',
+        distributionProvenance: {
+          kind: 'external-distribution',
+          producer: { name: 'test', version: '1', digest: `sha256:${RAW_A}` },
+          sourceRevision: RAW_A,
+          dependencyLockDigest: `sha256:${RAW_A}`,
+          buildConfigurationDigest: `sha256:${RAW_B}`,
+        },
+        distributionFiles: [{ path: 'main.js', bytes: new TextEncoder().encode('browser') }],
+        functionDescriptors: [],
+        functionDescriptorsDigestSha256: RAW_A,
+        capabilityContractDigestSha256: RAW_A,
+        channelContractDigestSha256: RAW_A,
+        constructionContractDigestSha256: RAW_A,
+        uiArtifact: {
+          kind: 'unsigned-ui',
+          digestSha256: RAW_A,
+          unsignedBytes,
+          artifactHash: CAPSULE_HASH,
+          runtimeDescriptor: { ...RUNTIME, signatureKeyIds: [] },
+          builderIdentity: 'builder-v1',
+          capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
+        },
+        serverArtifact: null,
+        diagnostics: [],
+      } as unknown as TWidgetArtifactConstructionResult;
+    })();
+    const signedBytes = new TextEncoder().encode('signed');
+    const store = new Map<string, string>();
+    const cache = {
+      async read(key: string) {
+        const json = store.get(key);
+        return json === undefined
+          ? null
+          : fnDecodeWidgetFilesystemConstruction(json);
+      },
+      async write(key: string, construction: Parameters<typeof fnEncodeWidgetFilesystemConstruction>[0]) {
+        store.set(key, fnEncodeWidgetFilesystemConstruction(construction));
+      },
+    };
+    const service = new WidgetFilesystemBuildService({
+      builderIdentity: 'builder-v1',
+      environment: ENVIRONMENT,
+      constructionCache: cache,
+      construction: {
+        async construct() {
+          constructCalls += 1;
+          return constructionResult;
+        },
+        async signConstruction() {
+          return constructionResult as unknown as TWidgetBuildResult;
+        },
+      },
+      capsuleInspector: {
+        async inspect(bytes) {
+          expect(bytes).toEqual(signedBytes);
+          return { artifactHash: CAPSULE_HASH, runtime: RUNTIME };
+        },
+      },
+      releaseAttestor: {
+        async attest() {
+          return {
+            algorithm: 'Ed25519',
+            keyId: 'release-key',
+            signatureBase64: Buffer.alloc(64, 1).toString('base64'),
+          };
+        },
+      },
+    });
+    const files = [
+      { path: 'src/main.ts', bytes: new TextEncoder().encode('export default 1;') },
+      { path: 'package.json', bytes: new TextEncoder().encode('{}') },
+    ];
+    const first = await service.construct({ manifest: MANIFEST, files });
+    const second = await service.construct({ manifest: MANIFEST, files });
+    const restoredOnly = await service.restoreCached({ manifest: MANIFEST, files });
+    expect(constructCalls).toBe(1);
+    expect(store.size).toBe(1);
+    expect(restoredOnly?.executableInputDigestSha256).toBe(first.executableInputDigestSha256);
+    expect(second.executableInputDigestSha256).toBe(first.executableInputDigestSha256);
+    expect(second.distFiles.map((file) => file.path)).toEqual(first.distFiles.map((file) => file.path));
+
+    store.clear();
+    expect(await service.restoreCached({ manifest: MANIFEST, files })).toBeNull();
+    expect(constructCalls).toBe(1);
+  });
+
+  test('caches a trusted map-free projection while source-map bytes stay process-owned', async () => {
+    let constructCalls = 0;
+    let deleteCalls = 0;
+    let writeCalls = 0;
+    const sourceMapped = {
+      sourceSnapshotId: RAW_A,
+      sourceDigestSha256: RAW_A,
+      sourceArtifact: { kind: 'source', digestSha256: RAW_A, bytes: new Uint8Array() },
+      sourceMapArtifact: {
+        kind: 'source_map',
+        digestSha256: RAW_B,
+        bytes: new TextEncoder().encode('trusted source map'),
+      },
+      builderIdentity: 'builder-v1',
+      capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
+      buildPolicyId: 'omnidraw-capsule-v1',
+      canonicalManifestJson: '{}',
+      distributionProvenance: {
+        kind: 'external-distribution',
+        producer: { name: 'test', version: '1', digest: `sha256:${RAW_A}` },
+        sourceRevision: RAW_A,
+        dependencyLockDigest: `sha256:${RAW_A}`,
+        buildConfigurationDigest: `sha256:${RAW_B}`,
+      },
+      distributionFiles: [{ path: 'main.js', bytes: new TextEncoder().encode('browser') }],
+      functionDescriptors: [],
+      functionDescriptorsDigestSha256: RAW_A,
+      capabilityContractDigestSha256: RAW_A,
+      channelContractDigestSha256: RAW_A,
+      constructionContractDigestSha256: RAW_A,
+      uiArtifact: {
+        kind: 'unsigned-ui',
+        digestSha256: RAW_A,
+        unsignedBytes: new TextEncoder().encode('unsigned'),
+        artifactHash: CAPSULE_HASH,
+        runtimeDescriptor: { ...RUNTIME, signatureKeyIds: [] },
+        builderIdentity: 'builder-v1',
+        capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
+      },
+      serverArtifact: null,
+      diagnostics: [],
+    } as unknown as TWidgetArtifactConstructionResult;
+    let cached: import('../widget-filesystem/build').TWidgetFilesystemConstruction | null = {
+      executableInputDigestSha256: RAW_A,
+      executableManifestDigestSha256: RAW_A,
+      canonicalExecutableManifestJson: '{}',
+      distributionDigestSha256: RAW_A,
+      construction: sourceMapped,
+      distFiles: [{ path: 'dist/main.js', bytes: new TextEncoder().encode('browser') }],
+    };
+    const createService = (returnMappedProjection = false) => new WidgetFilesystemBuildService({
+      builderIdentity: 'builder-v1',
+      environment: ENVIRONMENT,
+      constructionCache: {
+        read: async () => cached,
+        delete: async () => {
+          deleteCalls += 1;
+          cached = null;
+        },
+        write: async (_key, construction) => {
+          writeCalls += 1;
+          cached = construction;
+        },
+      },
+      construction: {
+        async construct() {
+          constructCalls += 1;
+          return sourceMapped;
+        },
+        async signConstruction() {
+          return sourceMapped as unknown as TWidgetBuildResult;
+        },
+        prepareDurableCacheConstruction(construction) {
+          expect(construction.sourceMapArtifact).not.toBeNull();
+          if (returnMappedProjection) return construction;
+          return {
+            ...construction,
+            sourceMapArtifact: null,
+          };
+        },
+      },
+      capsuleInspector: {
+        async inspect() {
+          return { artifactHash: CAPSULE_HASH, runtime: RUNTIME };
+        },
+      },
+      releaseAttestor: {
+        async attest() {
+          return {
+            algorithm: 'Ed25519',
+            keyId: 'release-key',
+            signatureBase64: Buffer.alloc(64, 1).toString('base64'),
+          };
+        },
+      },
+    });
+    const files = [
+      { path: 'src/main.ts', bytes: new TextEncoder().encode('export default 1;') },
+      { path: 'package.json', bytes: new TextEncoder().encode('{}') },
+    ];
+
+    const live = await createService().construct({ manifest: MANIFEST, files });
+    const restored = await createService().construct({ manifest: MANIFEST, files });
+
+    expect(deleteCalls).toBe(1);
+    expect(writeCalls).toBe(1);
+    expect(constructCalls).toBe(1);
+    expect(live.construction.sourceMapArtifact).not.toBeNull();
+    expect(restored.construction.sourceMapArtifact).toBeNull();
+    expect(cached?.construction.sourceMapArtifact).toBeNull();
+
+    cached = null;
+    await createService(true).construct({ manifest: MANIFEST, files });
+    expect(writeCalls).toBe(1);
+    expect(cached).toBeNull();
+  });
+
+  test('derives one fixed server contract while building UI-only and server widgets', async () => {
+    const harness = fixture();
+    const uiConstruction = await harness.service.construct({
+      manifest: MANIFEST,
+      files: [{ path: 'src/main.ts', bytes: new TextEncoder().encode('export default 1;') }],
+    });
+    const uiManifest = harness.captured()?.manifest;
+
+    const serverConstruction = await harness.service.construct({
+      manifest: {
+        ...MANIFEST,
+        server: { entry: 'server/main.ts' },
+      },
+      files: [
+        { path: 'src/main.ts', bytes: new TextEncoder().encode('export default 1;') },
+        { path: 'server/main.ts', bytes: new TextEncoder().encode('export default {};') },
+      ],
+    });
+
+    expect(uiConstruction.executableInputDigestSha256)
+      .not.toBe(serverConstruction.executableInputDigestSha256);
+    expect(uiManifest?.server).toBeNull();
+    expect(harness.captured()?.manifest.server).toEqual({ entry: 'server/main.ts' });
+  });
+
+  test('publishes presentation separately and validates exact runtime files', async () => {
+    const harness = fixture();
+    const construction = await harness.service.construct({
+      manifest: MANIFEST,
+      files: [{ path: 'src/main.ts', bytes: new TextEncoder().encode('export default 1;') }],
+    });
+    const prepared = await harness.service.preparePublication({
+      manifest: { ...MANIFEST, description: 'Presentation changed safely.' },
+      construction,
+    });
+    expect(prepared.manifestJson).toContain('Presentation changed safely.');
+    expect(prepared.files.map((file) => file.path)).toEqual([
+      'capsule.artifact',
+      'dist/.omnidraw-authoring-source.artifact',
+      'dist/main.js',
+    ]);
+    expect(prepared.browser.files.map((file) => file.path)).toEqual(['dist/main.js']);
+    expect(prepared.release.descriptor.complete).toBe(true);
+    expect(prepared.release.canonicalJson).not.toContain('Presentation changed safely.');
+  });
+
+  test('rejects authored manifests and generated output in executable inputs', async () => {
+    const { service } = fixture();
+    await expect(service.construct({
+      manifest: MANIFEST,
+      files: [{ path: 'omnidraw.json', bytes: new Uint8Array() }],
+    })).rejects.toThrow('excluded path');
+    await expect(service.construct({
+      manifest: MANIFEST,
+      files: [{ path: 'dist/main.js', bytes: new Uint8Array() }],
+    })).rejects.toThrow('excluded path');
+  });
+
+  test('digest-fences retained distribution bytes before release signing', async () => {
+    const harness = fixture();
+    const construction = await harness.service.construct({
+      manifest: MANIFEST,
+      files: [{ path: 'src/main.ts', bytes: new TextEncoder().encode('export default 1;') }],
+    });
+    construction.distFiles[0]!.bytes[0] ^= 0xff;
+    await expect(harness.service.preparePublication({
+      manifest: MANIFEST,
+      construction,
+    })).rejects.toThrow('distribution changed');
+  });
+
+  test('composes the tenant-free facade with the real Capsule constructor and signer', async () => {
+    let inspection: Readonly<{ artifactHash: typeof CAPSULE_HASH; runtime: typeof RUNTIME }> | null = null;
+    const artifactBuilder = new WidgetArtifactBuilderCapsule({
+      tempRoot: '/tmp',
+      builderIdentity: 'builder-v1',
+      capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
+      buildPolicyId: 'omnidraw-capsule-v1',
+      snapshotService: new WidgetSourceSnapshot({ nowMs: () => 0 }),
+      resolveTrustedPackageImport: (specifier) => Bun.resolveSync(specifier, import.meta.dir),
+      functionDescriptorExtractor: {
+        async extractServerFunctionDescriptors() { return []; },
+      },
+      async loadSigningKeys() {
+        return [{ keyId: 'release-key', privateKey: {} as CryptoKey }];
+      },
+      async capsuleSign(bytes) {
+        return new Uint8Array([...bytes, 0xff]);
+      },
+      async distributionBuild(request) {
+        return {
+          kind: 'external-distribution',
+          snapshot: { files: [{ path: 'main.js', bytes: new Uint8Array([1, 2, 3]) }] },
+          entry: 'main.js',
+          producer: {
+            name: 'filesystem-integration-test',
+            version: '1',
+            digest: `sha256:${RAW_A}`,
+          },
+          sourceRevision: request.sourceRevision,
+          dependencyLockDigest: `sha256:${RAW_A}`,
+          buildConfigurationDigest: `sha256:${RAW_B}`,
+        };
+      },
+      async capsuleBuild() {
+        return {
+          artifactBytes: new Uint8Array([4, 5, 6]),
+          artifactHash: CAPSULE_HASH,
+          diagnostics: [],
+        };
+      },
+      bunBuild: Bun.build,
+    });
+    const constructionPort = {
+      construct: artifactBuilder.construct.bind(artifactBuilder) as (
+        request: TWidgetArtifactConstructionRequest,
+      ) => Promise<TWidgetArtifactConstructionResult>,
+      decodeSourceArtifact: artifactBuilder.decodeSourceArtifact.bind(artifactBuilder),
+      async signConstruction(
+        request: import('@omnidraw/sdk/contract').TWidgetArtifactConstructionSignRequest,
+      ) {
+        const build = await artifactBuilder.signConstruction(request);
+        inspection = {
+          artifactHash: build.uiArtifact.artifactHash as typeof CAPSULE_HASH,
+          runtime: build.uiArtifact.runtimeDescriptor as typeof RUNTIME,
+        };
+        return build;
+      },
+      closeWorkspace: artifactBuilder.closeWorkspace.bind(artifactBuilder) as (
+        request: Readonly<{ workspaceKey: string }>,
+      ) => Promise<void>,
+      close: artifactBuilder.close.bind(artifactBuilder),
+    };
+    const service = new WidgetFilesystemBuildService({
+      builderIdentity: 'builder-v1',
+      environment: ENVIRONMENT,
+      construction: constructionPort,
+      capsuleInspector: {
+        async inspect() {
+          if (inspection === null) throw new Error('Signed Capsule was not produced.');
+          return inspection;
+        },
+      },
+      releaseAttestor: {
+        async attest() {
+          return {
+            algorithm: 'Ed25519',
+            keyId: 'release-key',
+            signatureBase64: Buffer.alloc(64, 1).toString('base64'),
+          };
+        },
+      },
+    });
+    const construction = await service.construct({
+      manifest: MANIFEST,
+      files: [{ path: 'src/main.ts', bytes: new TextEncoder().encode('export default 1;') }],
+    });
+    const signed = await service.sign(construction, 'release');
+    expect(construction.distFiles).toEqual([{
+      path: 'dist/main.js',
+      bytes: new Uint8Array([1, 2, 3]),
+    }]);
+    expect(signed.capsule.artifactBytes).toEqual(new Uint8Array([4, 5, 6, 0xff]));
+    expect(signed.capsule.runtime.signatureKeyIds).toEqual(['release-key']);
+    expect(service.decodePublishedSourceArtifact(
+      construction.construction.sourceArtifact.bytes,
+    )).toEqual([{
+      path: 'src/main.ts',
+      bytes: new TextEncoder().encode('export default 1;'),
+    }]);
+    await service.close();
+  });
+});

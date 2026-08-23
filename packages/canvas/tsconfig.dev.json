@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "composite": true,
+    "paths": {
+      "@omnidraw/canvas-contract": ["../canvas-contract/src/index.ts"],
+      "@omnidraw/canvas-contract/CONSTANTS": ["../canvas-contract/src/CONSTANTS.ts"],
+      "@omnidraw/theme": ["../theme/src/index.ts"]
+    },
+    "tsBuildInfoFile": "dist/tsconfig.dev.tsbuildinfo"
+  },
+  "references": [
+    { "path": "../canvas-contract/tsconfig.dev.json" },
+    { "path": "../theme/tsconfig.dev.json" }
+  ],
+  "watchOptions": {
+    "excludeDirectories": [
+      "**/node_modules",
+      "**/.git",
+      "../../.omnidraw"
+    ]
+  }
+}

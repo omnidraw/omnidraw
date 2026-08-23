@@ -1,0 +1,1 @@
+PRAGMA ignore_check_constraints

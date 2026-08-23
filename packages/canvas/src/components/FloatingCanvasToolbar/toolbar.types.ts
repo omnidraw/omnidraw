@@ -1,73 +1,59 @@
-/**
- * Toolbar Types
- * Type definitions for the floating drawing toolbar
- */
+import type { Component } from 'solid-js';
 
-export type TTool =
-  | "hand"
-  | "select"
-  | "rect"
-  | "diamond"
-  | "ellipse"
-  | "arrow"
-  | "line"
-  | "pen"
-  | "text"
-  | "image"
-  | "filesystem"
-  | "terminal"
-  | "browser";
+export type TCanvasStandardToolId =
+  | 'select'
+  | 'hand'
+  | 'rect'
+  | 'ellipse'
+  | 'pen'
+  | 'text'
+  | 'connector'
+  | 'arrow'
+  | 'widget'
+  | 'eraser';
 
-export interface IToolDefinition {
-  tool: TTool;
-  shortcut?: string;
-  letterShortcut?: string;
-}
+export type TCanvasToolId = Exclude<TCanvasStandardToolId, 'widget'>;
 
-/** Maps keyboard shortcut keys to tools */
-export const TOOL_SHORTCUTS: Record<string, TTool> = {
-  // Number shortcuts
-  "1": "select",
-  "2": "rect",
-  "3": "diamond",
-  "4": "ellipse",
-  "5": "arrow",
-  "6": "line",
-  "7": "pen",
-  "8": "text",
-  "9": "image",
-  // Letter shortcuts
-  "h": "hand",
-  "r": "rect",
-  "d": "diamond",
-  "o": "ellipse",
-  "a": "arrow",
-  "l": "line",
-  "p": "pen",
-  "t": "text",
-  // S61: Filesystem widget shortcut disabled while the widget surface is removed.
-  // "f": "filesystem",
-  // S60: Terminal widget shortcut disabled while the widget surface is removed.
-  // "j": "terminal",
-  "w": "browser",
-  "Escape": "select",
-} as const;
+export type TCanvasToolDefinition = Readonly<{
+  id: TCanvasToolId;
+  label: string;
+  shortcuts?: readonly string[];
+  Icon: Component<Readonly<{ size?: number }>>;
+}>;
 
-/** Ordered list of tools with their shortcuts */
-export const TOOLS: IToolDefinition[] = [
-  { tool: "hand", letterShortcut: "h" },
-  { tool: "select", shortcut: "1", letterShortcut: "esc" },
-  { tool: "rect", shortcut: "2", letterShortcut: "r" },
-  { tool: "diamond", shortcut: "3", letterShortcut: "d" },
-  { tool: "ellipse", shortcut: "4", letterShortcut: "o" },
-  { tool: "arrow", shortcut: "5", letterShortcut: "a" },
-  { tool: "line", shortcut: "6", letterShortcut: "l" },
-  { tool: "pen", shortcut: "7", letterShortcut: "p" },
-  { tool: "text", shortcut: "8", letterShortcut: "t" },
-  { tool: "image", shortcut: "9" },
-  // S61: Filesystem widget toolbar entry disabled while the widget surface is removed.
-  // { tool: "filesystem", letterShortcut: "f" },
-  // S60: Terminal widget toolbar entry disabled while the widget surface is removed.
-  // { tool: "terminal", letterShortcut: "j" },
-  { tool: "browser", letterShortcut: "w" },
-];
+export type TCanvasKeyboardShortcut = Readonly<{
+  key: string;
+  label: string;
+  /** Matches Ctrl on Windows/Linux and Command on macOS. */
+  primary?: boolean;
+  alt?: boolean;
+  shift?: boolean;
+}>;
+
+type TCanvasToolbarContributionBase = Readonly<{
+  id: string;
+  label: string;
+  Icon: Component<Readonly<{ size?: number }>>;
+  shortcuts?: readonly TCanvasKeyboardShortcut[];
+}>;
+
+/** A host-named button that activates an editor tool such as a product tool. */
+export type TCanvasToolbarToolContribution =
+  TCanvasToolbarContributionBase & Readonly<{
+    kind: 'tool';
+    toolId: TCanvasStandardToolId;
+  }>;
+
+/** A host-owned action. Persistent actions remain visible when tools collapse. */
+export type TCanvasToolbarActionContribution =
+  TCanvasToolbarContributionBase & Readonly<{
+    kind: 'action';
+    placement?: 'tools' | 'persistent';
+    active?(): boolean;
+    attention?(): boolean;
+    onActivate(): void;
+  }>;
+
+export type TCanvasToolbarContribution =
+  | TCanvasToolbarToolContribution
+  | TCanvasToolbarActionContribution;

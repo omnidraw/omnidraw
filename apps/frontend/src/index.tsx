@@ -1,35 +1,45 @@
 /* @refresh reload */
 import "./index.css";
-import { render } from "solid-js/web";
-import "solid-devtools";
-import "./services/orpc-websocket";
-import "./services/theme";
+import { render } from "@solidjs/web";
 
-import { Route, Router, useParams } from "@solidjs/router";
-import { Show } from "solid-js";
-import App from "./App";
-import CanvasPage from "./pages/canvas";
-import WelcomePage from "./pages/welcome";
-import { store } from "./store";
-import routeStateStyles from "./styles/route-state.module.css";
+import { createRouter, useParams } from "@solidjs/router";
+import { lazy, Loading, Show } from "solid-js";
+import App from "./shell/framework/App";
+import WelcomePage from "./shell/framework/pages/welcome";
+import routeStateStyles from "./shell/framework/styles/route-state.module.css";
+import { FrontendRuntimeProvider } from "./shell/framework/runtime-context";
+import { createLiveFrontendRuntime } from "./shell/runtime/frontend-runtime";
+
+const CanvasPage = lazy(() => import("./shell/framework/pages/canvas"));
+const ResourcePage = lazy(() => import("./shell/framework/pages/resource"));
+const WidgetPage = lazy(() => import("./shell/framework/pages/widget"));
 
 const CanvasRoute = () => {
   const params = useParams<{ id: string }>();
-  const canvas = () => store.canvases.find((c) => c.id === params.id);
+  const canvasId = () => params.id.trim();
 
   return (
     <Show
-      when={canvas()}
+      when={canvasId().length > 0 && canvasId().length <= 200}
       fallback={
         <div class={routeStateStyles.root}>
-          <p class={routeStateStyles.loadingText}>Loading canvas...</p>
+          <p class={routeStateStyles.loadingText}>Invalid canvas link.</p>
         </div>
       }
     >
-      {(c) => <CanvasPage canvas={c()} />}
+      <CanvasPage canvasId={canvasId()} />
     </Show>
   );
 };
+
+const Router = createRouter({
+  routes: [
+    { path: "/", component: WelcomePage },
+    { path: "/c/:id", component: CanvasRoute },
+    { path: "/resources/:id", component: ResourcePage },
+    { path: "/widgets/:source/:name", component: WidgetPage },
+  ],
+});
 
 const root = document.getElementById("root");
 
@@ -39,12 +49,24 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
   );
 }
 
-render(
+
+const runtime = createLiveFrontendRuntime({ ownerWindow: window, ownerDocument: document });
+const disposeView = render(
   () => (
-    <Router root={App}>
-      <Route path="/" component={WelcomePage} />
-      <Route path="/c/:id" component={CanvasRoute} />
-    </Router>
+    <FrontendRuntimeProvider runtime={runtime}>
+      <Loading fallback={null}>
+        <Router>
+          {(props) => <App {...props} />}
+        </Router>
+      </Loading>
+    </FrontendRuntimeProvider>
   ),
   root!,
 );
+
+const disposeApplication = (): void => {
+  disposeView();
+  void runtime.dispose();
+};
+window.addEventListener("pagehide", disposeApplication, { once: true });
+import.meta.hot?.dispose(disposeApplication);

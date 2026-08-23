@@ -1,0 +1,3 @@
+SELECT key, value, revision, created_at, updated_at
+FROM resource_entries
+LIMIT 0

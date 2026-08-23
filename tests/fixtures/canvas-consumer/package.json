@@ -1,0 +1,27 @@
+{
+  "name": "@omnidraw-fixtures/canvas-consumer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "browser-smoke": "bun run src/browser-smoke.ts",
+    "test": "bun test transport.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@omnidraw/canvas": "0.7.0",
+    "@omnidraw/canvas-contract": "0.7.0",
+    "@omnidraw/component-ai-chat": "0.7.0",
+    "@omnidraw/theme": "0.7.0",
+    "@solidjs/signals": "2.0.0-rc.0",
+    "@solidjs/web": "2.0.0-rc.0",
+    "solid-js": "2.0.0-rc.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "playwright": "1.61.1",
+    "typescript": "7.0.2",
+    "vite": "8.1.4",
+    "@solidjs/vite-plugin": "3.0.0-next.31"
+  }
+}

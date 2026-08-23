@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "jsx": "preserve",
-    "jsxImportSource": "solid-js",
+    "jsxImportSource": "@solidjs/web",
     "target": "ESNext",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
@@ -10,17 +10,20 @@
     "moduleResolution": "bundler",
     "experimentalDecorators": true,
     "noEmit": true,
-    "rootDir": ".",
-    "paths": {},
     "strict": true,
     "skipLibCheck": true,
     "types": [
-      "bun-types",
       "vite/client"
     ]
   },
   "include": [
-    "src",
-    "../../global.d.ts"
-  ]
+    "src"
+  ],
+  "watchOptions": {
+    "excludeDirectories": [
+      "**/node_modules",
+      "**/.git",
+      "../../.omnidraw"
+    ]
+  }
 }

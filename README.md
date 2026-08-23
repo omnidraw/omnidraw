@@ -1,176 +1,128 @@
-# Vibecanvas
+# Omnidraw
 
-Run your agents in an infinite drawing canvas.
+Run your real apps in an infinite drawing canvas, and generate apps with AI
+using your existing code plan subscriptions.
 
-Runs completly local. Reuses your llm subscriptions.
 
-![Vibecanvas screenshot](./apps/web/public/seo.png)
+## Quick start
 
-The project is organized as a monorepo and follows a **Functional Core / Imperative Shell** architecture.
+The supported release workflow runs on Linux and macOS and requires:
 
-## Features
+- Bun `1.4.0` (the exact version declared by `packageManager`)
 
-- Infinite canvas UI for drawing, selecting, transforming, and grouping elements
-- Canvas CLI for list/query/add/patch/move/group/ungroup/delete/reorder flows
-- Agents can edit canvases too by calling the same CLI commands
-- Real-time CRDT sync with Automerge for conflict-free collaboration
-- Unified WebSocket API endpoint for app RPC (`/api`)
-- Dedicated Automerge sync endpoint (`/automerge`)
-- Native binary distribution for macOS, Linux, and Windows
-- Auto-update checks in the CLI/server runtime
-
-## Quick Start
-
-### Install globally
+Clone, install from the committed public-npm lockfile, build once, and start the
+already-built application:
 
 ```bash
-# bun
-bun add -g vibecanvas
-
-# npm
-npm i -g vibecanvas
-
-# pnpm
-pnpm add -g vibecanvas
-
-# yarn
-yarn global add vibecanvas
+git clone https://github.com/omnidraw/omnidraw.git
+cd omnidraw
+bun install --frozen-lockfile
+bun run build
+bun run start
 ```
 
-Then run:
+When startup is ready, Omnidraw prints:
+
+```text
+Omnidraw is ready at http://127.0.0.1:7496/
+```
+
+Open that URL in a browser. The one Bun server serves the built SPA, HTTP API,
+files, and WebSocket transport. Stop it gracefully with `Ctrl+C`.
+
+`bun run start` never installs, compiles, stages packages, or invokes Vite. It
+validates the existing build and fails with an instruction to run
+`bun run build` when the build is missing or stale. Run `bun run build` again
+after pulling updates or changing frontend/public-package source.
+
+### Port and data overrides
+
+The release server binds only to `127.0.0.1`. Override its port after the
+script separator:
 
 ```bash
-vibecanvas
+bun run start -- --port 8080
 ```
 
-Open [http://localhost:7496](http://localhost:7496) to use the app.
-
-You can edit the canvas from the UI, or from the CLI. Agents can use the same canvas CLI surface for scripted canvas changes.
-
-The Vibecanvas skill for agents lives here:
-- https://github.com/vibecanvas/skills
-
-For common setup/runtime questions, see the FAQ:
-
-- https://vibecanvas.dev/docs/faq
-
-### Upgrade vibecanvas
-
-Vibecanvas includes a built-in upgrade command from the server CLI (`apps/server/src/main.ts`).
+Omnidraw stores its database, configuration, widgets, and local resources in
+`~/.omnidraw` by default. `OMNIDRAW_HOME` selects another home, and
+`--data-dir` has higher precedence than the environment:
 
 ```bash
-# check for updates and install
-vibecanvas upgrade
-
-# check only (no install)
-vibecanvas upgrade --check
+OMNIDRAW_HOME=/srv/omnidraw bun run start
+bun run start -- --data-dir ./local-omnidraw-home
+OMNIDRAW_HOME=/srv/omnidraw bun run start -- --data-dir ./preferred-home
 ```
 
-Useful related commands:
+Relative paths resolve from the repository root when invoked through the root
+`start` script.
+
+## Contributor workflow
+
+Development is separate from the release workflow. After a frozen install,
+run the development orchestrator:
 
 ```bash
-vibecanvas --version
-vibecanvas --help
-vibecanvas canvas --help
+bun install --frozen-lockfile
+bun run dev
 ```
 
-### Uninstall
+It watches source, uses the Vite frontend URL printed by the runner (normally
+[http://127.0.0.1:3002](http://127.0.0.1:3002)), and stores development data at
+`./.omnidraw/main.db`. The development backend normally uses port `3000`.
+
+Useful source CLI commands are:
 
 ```bash
-# bun
-bun remove -g vibecanvas
-
-# npm
-npm uninstall -g vibecanvas
-
-# pnpm
-pnpm remove -g vibecanvas
-
-# yarn
-yarn global remove vibecanvas
+bun run apps/backend/src/main.ts --version
+bun run apps/backend/src/main.ts --help
+bun run apps/backend/src/main.ts canvas --help
+bun run apps/backend/src/main.ts widget --help
 ```
 
-To remove the curl-installed binary and local Vibecanvas config/data/state/cache:
+Widget server and function code is trusted local code. Omnidraw may execute it
+in disposable Bun children; this is not a hostile-code sandbox, so review and
+trust widget code before running it.
+
+## Repository layout
+
+```text
+apps/
+  backend/             Bun source-run server, CLI, authorities, persistence,
+                       trusted local widget execution, and simulation
+  frontend/            Solid SPA, product UI, and browser adapters
+
+packages/
+  canvas-contract/     Serialized Canvas contract
+  canvas/              Embeddable Canvas renderer
+  sdk/                 Widget authoring and host bridge
+  component-ai-chat/   Reusable AI Chat and Canvas extension
+  theme/               Tokens, CSS, and theme helpers
+```
+
+## Test runners
+
+The repository intentionally uses two runners. `bun test` owns backend,
+contract, SDK, theme, transport, architecture, database, conformance, and pure
+frontend tests. Vitest owns Solid component and browser-like DOM suites because
+those packages use the same Vite transforms and jsdom setup as their builds.
+
+Use the owning package's `bun run test` script instead of invoking a runner
+against an arbitrary repository path. The root `bun run test` command composes
+both runner families with type, package, database, and live-browser gates.
+
+The order-7 performance workloads are separate from correctness gates:
 
 ```bash
-vibecanvas uninstall --dry-run
-vibecanvas uninstall --yes
+bun run benchmark:order-7
 ```
 
-Also remove any PATH line you added for `~/.vibecanvas/bin` in your shell profile (`~/.zshrc`, `~/.bashrc`, `~/.profile`, or fish config).
+For implementation conventions and deeper subsystem documentation, read:
 
-## Database
-
-- Default installed/compiled Turso DB path: `~/.local/share/vibecanvas/vibecanvas.turso`
-- Respects `XDG_DATA_HOME` on Linux/macOS-style XDG setups, so effective path is `"$XDG_DATA_HOME"/vibecanvas/vibecanvas.turso` when set
-- `VIBECANVAS_CONFIG=/some/dir` changes DB path to `/some/dir/vibecanvas.turso`
-- `VIBECANVAS_DB=/some/file.turso` sets an explicit Turso file path
-- Dev monorepo default DB path: `./local-volume/data/vibecanvas.turso`
-- Schema source: `packages/service-db/src/schema.ts`
-
-## Debugging the live app
-
-The canvas runtime includes a built-in debug logger that can be enabled per plugin or per service from the browser devtools console.
-
-Debug keys use this format:
-
-```txt
-vibecanvas:debug:<plugin|service>:<name>
-```
-
-Levels:
-- `0`, `false`, `off`, or empty = disabled
-- `1` = important lifecycle logs
-- `2` = more detailed state/layout logs
-- `3` = very noisy per-frame/per-event logs
-
-Examples:
-
-```js
-// hosted component plugin logs
-localStorage.setItem("vibecanvas:debug:plugin:hosted-component", "3")
-
-// camera service logs
-localStorage.setItem("vibecanvas:debug:service:camera", "1")
-```
-
-Then reload the page and inspect the browser console.
-
-To turn a target back off:
-
-```js
-localStorage.setItem("vibecanvas:debug:plugin:hosted-component", "0")
-```
-
-Current log output includes prefixes like:
-
-```txt
-[vibecanvas][plugin:hosted-component][L2] ...
-```
-
-This is especially useful for debugging live layout, overlay, hydration, transform, and mount issues inside the running app.
-
-## Contributing
-
-Contributions are welcome.
-
-**By submitting a pull request, you agree to transfer ownership of your contribution to the project maintainer.** This allows the project to be re-licensed or otherwise managed without needing to contact every individual contributor.
-
-Recommended workflow:
-1. Create a branch from `main`.
-2. Make focused changes with tests.
-3. Run relevant checks (`bun test`, package-specific tests, and build checks if needed).
-4. Open a pull request with a clear summary.
-
-For implementation conventions and deeper subsystem docs, read:
-- `CLAUDE.md`
-- `apps/spa/CLAUDE.md`
-- `apps/spa/src/features/canvas-crdt/CLAUDE.md`
-- `apps/spa/src/features/canvas-crdt/canvas/CLAUDE.md`
-- `apps/spa/src/features/canvas-crdt/input-commands/CLAUDE.md`
-- `apps/spa/src/features/canvas-crdt/managers/CLAUDE.md`
-- `apps/spa/src/features/canvas-crdt/renderables/CLAUDE.md`
+- [`AGENTS.md`](AGENTS.md)
+- [`docs/internal/llm.app-architecture.md`](docs/internal/llm.app-architecture.md)
+- [`docs/internal/llm.widget-system.md`](docs/internal/llm.widget-system.md)
 
 ## License
 
-MIT. See `LICENSE`.
+MIT. See [`LICENSE`](LICENSE).

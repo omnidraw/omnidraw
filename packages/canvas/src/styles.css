@@ -1,0 +1,4 @@
+@import './base.css';
+@import './components/FloatingCanvasToolbar/styles.css';
+@import './components/SelectionStyleMenu/styles.css';
+@import './components/Canvas.css';

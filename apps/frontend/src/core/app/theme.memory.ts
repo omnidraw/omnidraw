@@ -1,0 +1,61 @@
+import {
+  THEME_ID_DARK,
+  THEME_ID_LIGHT,
+  type IThemeService,
+  type ThemeId,
+} from "@omnidraw/theme";
+
+export type TThemeAppearance = "light" | "dark";
+
+export type TThemeMemory = {
+  theme: ThemeId;
+  lastLightThemeId: ThemeId;
+  lastDarkThemeId: ThemeId;
+};
+
+export function fnGetDefaultThemeIdForAppearance(appearance: TThemeAppearance) {
+  return appearance === "dark" ? THEME_ID_DARK : THEME_ID_LIGHT;
+}
+
+export function fnGetRememberedThemeId(args: {
+  appearance: TThemeAppearance;
+  memory: TThemeMemory;
+  themeService: IThemeService;
+}) {
+  const rememberedThemeId = args.appearance === "dark"
+    ? args.memory.lastDarkThemeId
+    : args.memory.lastLightThemeId;
+
+  if (args.themeService.hasTheme(rememberedThemeId)) {
+    const rememberedTheme = args.themeService.getThemes().find((theme) => theme.id === rememberedThemeId);
+    if (rememberedTheme?.appearance === args.appearance) {
+      return rememberedThemeId;
+    }
+  }
+
+  return fnGetDefaultThemeIdForAppearance(args.appearance);
+}
+
+export function fnSyncThemeMemory(args: {
+  memory: TThemeMemory;
+  themeService: IThemeService;
+  nextThemeId: ThemeId;
+}) {
+  const nextTheme = args.themeService.getThemes().find((theme) => theme.id === args.nextThemeId);
+  if (!nextTheme) {
+    return {
+      ...args.memory,
+      theme: fnGetRememberedThemeId({
+        appearance: args.themeService.getTheme().appearance,
+        memory: args.memory,
+        themeService: args.themeService,
+      }),
+    } satisfies TThemeMemory;
+  }
+
+  return {
+    theme: nextTheme.id,
+    lastLightThemeId: nextTheme.appearance === "light" ? nextTheme.id : args.memory.lastLightThemeId,
+    lastDarkThemeId: nextTheme.appearance === "dark" ? nextTheme.id : args.memory.lastDarkThemeId,
+  } satisfies TThemeMemory;
+}
