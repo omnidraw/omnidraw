@@ -4,11 +4,6 @@ This is the consumer manual for `@omnidraw/capsule`. Capsule 0.16.0 uses
 public browser API groups; runtime ABI, DOM profiles, feature profiles, and
 feature grants remain private enforcement details.
 
-For exact exports, see [`public-api.md`](./public-api.md). For the normative
-security contract, see [`CAPSULE.md`](./CAPSULE.md). The generated
-[`capsule-api-groups-v1` table](./api-groups-v1.generated.md) is the exact
-group and bundle-digest index.
-
 ## Install
 
 Capsule is one ESM package:

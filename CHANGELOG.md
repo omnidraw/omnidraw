@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.5.0
+
+Breaking Change. New database file.
+
+### Added
+- Db/Kv resources for widget to use
+
+### Changed
+- Bun 1.4.0
+- AI Wizzard -> AI Chat allows to edit multiple resources and wigets
+- Integrate new render engine (cangine)
+- Integrate new ui sandbox (capsule)
+- Reset database
+- renamed project to OmniDraw
+
+## Removed
+- cli to edit canvas items
+
 ## 0.4.7
 
 ### Added

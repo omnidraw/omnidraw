@@ -122,7 +122,6 @@ For implementation conventions and deeper subsystem documentation, read:
 - [`AGENTS.md`](AGENTS.md)
 - [`docs/internal/llm.app-architecture.md`](docs/internal/llm.app-architecture.md)
 - [`docs/internal/llm.widget-system.md`](docs/internal/llm.widget-system.md)
-- [`docs/internal/screens/SCREENS.md`](docs/internal/screens/SCREENS.md)
 
 ## License
 

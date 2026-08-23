@@ -256,9 +256,6 @@ needed. Ask for confirmation first.
 
 - Use `rg` and `rg --files` for discovery. There is no generated repository
   file index.
-- Use [tasks/BASED.md](tasks/BASED.md) when creating an implementation task
-  plan. Consider a mockup only when visual behavior changes, and consult the
-  screen atlas first.
 - Keep explanations simple and direct. Lead with what changed, why it matters,
   and what the next action is.
 - Preserve unrelated worktree changes. Do not overwrite user-owned edits.
