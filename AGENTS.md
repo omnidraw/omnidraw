@@ -262,18 +262,3 @@ needed. Ask for confirmation first.
 - Keep explanations simple and direct. Lead with what changed, why it matters,
   and what the next action is.
 - Preserve unrelated worktree changes. Do not overwrite user-owned edits.
-
-## Vendored reference repositories
-
-`repos/effect` is the vendored Effect source and documentation reference.
-
-- Treat vendored references as read-only.
-- Never modify files under `repos/` unless explicitly asked to update the
-  vendored reference.
-- Do not copy a reference implementation verbatim into production code.
-- Use references to understand patterns, then implement the smallest solution
-  that fits Omnidraw's contracts and conventions.
-- When referencing vendored findings in a task or review, record the upstream
-  repository and relevant path or commit.
-
-- `repos/effect`
