@@ -1,5 +1,7 @@
 # Omnidraw
 
+![img](./docs/assets/omnidraw.png)
+
 Run your real apps in an infinite drawing canvas, and generate apps with AI
 using your existing code plan subscriptions.
 
