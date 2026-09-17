@@ -8,10 +8,12 @@ export const FUNCTION_IDEMPOTENCY_TTL_MAXIMUM_MS = 90 * 24 * 60 * 60 * 1_000;
 
 export const WIDGET_CAPSULE_BUILD_IDENTITY = Object.freeze({
   packageName: '@omnidraw/capsule',
-  packageVersion: '0.16.0',
-  packageDigest: 'sha256:2239eca75b6564091194883972a3b45852373bbae5f55c13b1c0742426985d95',
+  packageVersion: '0.17.1',
+  // SHA-256 of the published npm tarball.
+  packageDigest: 'sha256:dfa2e1d252085254791009bbf09dc65b97ad4656c59c1e62f01166600b4db721',
   buildApiVersion: '0.1.0',
-  runtimeBuildDigest: 'sha256:e7c239a3853ff6918c22dc5cea4246e863a89938f75fccbab0dd8e76023c775d',
+  // SHA-256 of sorted dist/**/*.js entries: relative POSIX path + NUL + bytes + NUL.
+  runtimeBuildDigest: 'sha256:8668c7e7ccf0b9c97a947fc800d67cbb314c423fb3f9b33bc9393ee7cf16f53a',
 }) satisfies TWidgetRuntimeBuildIdentity;
 
 export const WIDGET_CAPSULE_BUILD_POLICY_ID = 'omnidraw-capsule-widget-v2';

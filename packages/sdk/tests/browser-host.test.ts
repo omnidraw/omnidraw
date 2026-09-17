@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { CAPSULE_API_GROUP_BUNDLE_DIGEST } from '@omnidraw/capsule/protocol';
 import { createWidgetBrowserHost } from '../src/host';
+import retained from './fixtures/capsule-0.16-signed.json';
 
 const digest = 'b'.repeat(64);
 const artifactHash = `sha256:${'a'.repeat(64)}` as const;
@@ -45,6 +46,18 @@ describe('@omnidraw/sdk/host', () => {
       },
       functions: [],
     });
+    // validateArtifact checks transport integrity, not Capsule runtime support.
+    // Signed current/retained/unknown bundle admission belongs to mount().
+    for (const bundleDigest of [retained.bundleDigest, `sha256:${'f'.repeat(64)}`]) {
+      const captured = await host.validateArtifact({
+        ...artifact,
+        runtime: {
+          ...artifact.runtime,
+          apiContract: { ...artifact.runtime.apiContract, bundleDigest },
+        },
+      });
+      expect(captured.runtime.apiContract.bundleDigest).toBe(bundleDigest);
+    }
     bytes[0] = 9;
     expect([...artifact.bytes]).toEqual([1, 2, 3]);
     expect(artifact.runtime.artifactHash).toBe(artifactHash);

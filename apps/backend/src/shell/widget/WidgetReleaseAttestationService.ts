@@ -1,6 +1,5 @@
 import { createHash, webcrypto } from 'node:crypto';
 import {
-  OMNIDRAW_CAPSULE_API_BUNDLE_DIGEST,
   OMNIDRAW_CAPSULE_API_CONTRACT_FORMAT,
   fnMapCapsuleApis,
 } from '#backend/shell/widget-runtime/contract';
@@ -50,7 +49,8 @@ function sameStrings(left: readonly string[], right: readonly string[]): boolean
  * Deployment-local release attestation authority. This never parses or runs
  * guest bytes. The canonical release file hashes bind the final signed Capsule
  * envelope while Capsule itself independently verifies its embedded signature
- * at the browser mount boundary.
+ * at the browser mount boundary. Bundle compatibility also belongs to Capsule:
+ * a trusted retained contract need not equal the latest build registry digest.
  */
 export class WidgetReleaseAttestationService
 implements TWidgetCatalogCapsuleInspectionEffects {
@@ -100,7 +100,6 @@ implements TWidgetCatalogCapsuleInspectionEffects {
       || args.releaseAttestation.algorithm !== 'Ed25519'
       || args.releaseAttestation.keyId !== WIDGET_CAPSULE_RELEASE_SIGNING_KEY_ID
       || args.expectedRuntime.apiContract.format !== OMNIDRAW_CAPSULE_API_CONTRACT_FORMAT
-      || args.expectedRuntime.apiContract.bundleDigest !== OMNIDRAW_CAPSULE_API_BUNDLE_DIGEST
       || !sameStrings(normalizedApis, args.expectedRuntime.apiContract.groups)
       || !sameStrings(args.expectedRuntime.apiContract.groups, args.expectedApis)
       || !args.expectedRuntime.apiContract.groups.every((api) => (

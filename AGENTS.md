@@ -254,6 +254,10 @@ needed. Ask for confirmation first.
 
 ## Repository workflow
 
+- Manage tasks in the sibling repository using [BASED](../omnidraw-based/tasks/BASED.md).
+  Agents must read and follow that task system and keep task indexes, plans,
+  logs, and evidence in `../omnidraw-based`, not in this repository.
+
 - Use `rg` and `rg --files` for discovery. There is no generated repository
   file index.
 - Keep explanations simple and direct. Lead with what changed, why it matters,

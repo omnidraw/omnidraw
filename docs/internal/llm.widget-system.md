@@ -116,9 +116,16 @@ The browser mounts widgets through the filesystem catalog:
    catalog generation, reads the exact signed Capsule bytes listed in
    `release.json`, and revalidates the server-function descriptor digest and
    the signed capability request before returning mount inputs.
-2. A missing or unhealthy publication produces a missing-widget frame. No
+2. Release trust and runtime compatibility are separate checks. The backend
+   verifies the exact bytes, release attestation, API groups, and host policy;
+   Capsule verifies the signed browser artifact and resolves its current or
+   retained API-contract bundle before guest execution. A supported retained
+   publication stays byte-identical across Capsule upgrades: do not compare its
+   bundle digest to the newest compiler registry or rebuild it implicitly.
+   Build-environment identities still fence new draft build acceptance and reuse.
+3. A missing or unhealthy publication produces a missing-widget frame. No
    durable canvas row is deleted.
-3. Resource bindings live only in the exact current draft or published
+4. Resource bindings live only in the exact current draft or published
    manifest. Runtime and function reads re-resolve the manifest declaration,
    resource lifecycle, kind, effect, operation, and policy. Placement and
    canvas items accept no binding payload and never open a resource picker.

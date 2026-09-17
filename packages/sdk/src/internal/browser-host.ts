@@ -22,7 +22,6 @@ import {
   type CapsuleAuthoringInspectionHost,
 } from '@omnidraw/capsule/authoring-inspection';
 import {
-  CAPSULE_API_GROUP_BUNDLE_DIGEST,
   CAPSULE_API_GROUP_CONTRACT_FORMAT,
 } from '@omnidraw/capsule/protocol';
 import type {
@@ -356,10 +355,11 @@ export async function createWidgetBrowserHost(
     if (artifact.runtime.artifactHash !== artifact.artifactHash) {
       throw new Error('Widget browser artifact hash does not match runtime metadata.');
     }
-    if (
-      artifact.runtime.apiContract.format !== CAPSULE_API_GROUP_CONTRACT_FORMAT
-      || artifact.runtime.apiContract.bundleDigest !== CAPSULE_API_GROUP_BUNDLE_DIGEST
-    ) throw new Error('Widget browser artifact uses an incompatible API contract.');
+    // Transport validation is not runtime admission. Capsule mount verifies the
+    // signed contract against its current and retained bundles before execution.
+    if (artifact.runtime.apiContract.format !== CAPSULE_API_GROUP_CONTRACT_FORMAT) {
+      throw new Error('Widget browser artifact uses an incompatible API contract.');
+    }
     return artifact;
   };
 

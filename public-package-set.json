@@ -3,14 +3,14 @@
   "packages": {
     "@omnidraw/canvas-contract": "0.7.0",
     "@omnidraw/canvas": "0.7.0",
-    "@omnidraw/sdk": "0.7.0",
+    "@omnidraw/sdk": "0.7.1",
     "@omnidraw/component-ai-chat": "0.7.0",
     "@omnidraw/theme": "0.7.0"
   },
   "qualification": {
     "effect": "4.0.0-rc.108",
     "@omnidraw/cangine": "0.7.0",
-    "@omnidraw/capsule": "0.16.0",
+    "@omnidraw/capsule": "0.17.1",
     "@solidjs/router": "2.0.0-next.16",
     "@solidjs/signals": "2.0.0-rc.0",
     "@solidjs/vite-plugin": "3.0.0-next.31",

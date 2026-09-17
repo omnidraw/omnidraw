@@ -69,7 +69,7 @@
     },
     "packages/canvas": {
       "name": "@omnidraw/canvas",
-      "version": "0.12.1",
+      "version": "0.7.0",
       "dependencies": {
         "@omnidraw/cangine": "0.7.0",
         "@omnidraw/canvas-contract": "workspace:*",
@@ -92,7 +92,7 @@
     },
     "packages/canvas-contract": {
       "name": "@omnidraw/canvas-contract",
-      "version": "0.8.0",
+      "version": "0.7.0",
       "devDependencies": {
         "bun-types": "1.4.0",
         "typescript": "7.0.2",
@@ -100,7 +100,7 @@
     },
     "packages/component-ai-chat": {
       "name": "@omnidraw/component-ai-chat",
-      "version": "0.3.1",
+      "version": "0.7.0",
       "dependencies": {
         "@omnidraw/canvas": "workspace:*",
         "dompurify": "^3.4.11",
@@ -129,14 +129,14 @@
     },
     "packages/sdk": {
       "name": "@omnidraw/sdk",
-      "version": "0.14.0",
+      "version": "0.7.1",
       "bin": {
         "omnidraw-widget": "./dist/cli.js",
       },
       "dependencies": {
         "@babel/parser": "7.29.8",
         "@babel/traverse": "7.29.8",
-        "@omnidraw/capsule": "0.16.0",
+        "@omnidraw/capsule": "0.17.1",
         "effect": "4.0.0-rc.108",
         "lucide-static": "1.24.0",
       },
@@ -149,7 +149,7 @@
     },
     "packages/theme": {
       "name": "@omnidraw/theme",
-      "version": "0.1.0",
+      "version": "0.7.0",
       "devDependencies": {
         "bun-types": "1.4.0",
         "typescript": "7.0.2",
@@ -169,7 +169,7 @@
   "catalog": {
     "@earendil-works/pi-coding-agent": "^0.80.6",
     "@effect/platform-bun": "4.0.0-rc.108",
-    "@omnidraw/capsule": "0.16.0",
+    "@omnidraw/capsule": "0.17.1",
     "@solidjs/router": "2.0.0-next.16",
     "@solidjs/signals": "2.0.0-rc.0",
     "@solidjs/vite-plugin": "3.0.0-next.31",
@@ -496,7 +496,7 @@
 
     "@omnidraw/canvas-contract": ["@omnidraw/canvas-contract@workspace:packages/canvas-contract"],
 
-    "@omnidraw/capsule": ["@omnidraw/capsule@0.16.0", "", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-aZ8QgfNQ/PbK5CTFoUDZMIQIlueBeJVaeBAcuQXjF0KUy6VVFf+cjvfiwiKB5K27np+40XRFkEdLVCd5DCeALQ=="],
+    "@omnidraw/capsule": ["@omnidraw/capsule@0.17.1", "", { "dependencies": { "@jitl/quickjs-singlefile-browser-debug-sync": "0.32.0", "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0", "acorn": "8.17.0", "lightningcss": "1.32.0", "quickjs-emscripten-core": "0.32.0" } }, "sha512-O75Dy/q909m3sg2XPRKZD3ntwLpfgV9jDcG5mmX7d5NDlX7OtZwFMrg2hg6zB0Hjb61irMwUYL5bIsi8zvboPw=="],
 
     "@omnidraw/component-ai-chat": ["@omnidraw/component-ai-chat@workspace:packages/component-ai-chat"],
 
